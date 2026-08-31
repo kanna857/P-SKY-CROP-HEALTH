@@ -5,17 +5,14 @@ import { DiseaseRiskWidget } from '@/components/analyze/DiseaseRiskWidget';
 import { 
   Sparkles, 
   Leaf, 
-  Target, 
-  Zap, 
+  Activity,
+  Clock,
   Scan,
   Crosshair,
-  Filter,
   CheckCircle2,
-  Layers,
-  Award
+  Layers
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 
 interface SampleLeaf {
   id: string;
@@ -216,8 +213,13 @@ const DiagnosePage = () => {
 
         {/* 2-Column Split Diagnostic Workbench */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Specimen Selector Tray & Pathology Reference Cards (5 Cols) */}
-          <div className="lg:col-span-5 space-y-6">
+          {/* Left Column: AI Leaf Disease Scanner (6 Cols) */}
+          <div className="lg:col-span-6 space-y-6">
+            <CameraUpload sampleImageTrigger={sampleTrigger} />
+          </div>
+
+          {/* Right Column: Specimen Selector Library (6 Cols) */}
+          <div className="lg:col-span-6 space-y-6">
             <div className="p-6 rounded-3xl bg-[#0c1422]/90 border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl space-y-4">
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <div className="flex items-center gap-2">
@@ -228,7 +230,7 @@ const DiagnosePage = () => {
                     <h3 className="font-display text-sm font-bold text-white flex items-center gap-2">
                       Foliar Specimen Library
                       <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">
-                        6 Fast Test Samples
+                        8 Fast Test Samples
                       </Badge>
                     </h3>
                     <p className="text-[11px] text-gray-400">Pre-loaded pathology specimens</p>
@@ -238,17 +240,17 @@ const DiagnosePage = () => {
 
               {/* Crop Filter Category Chips */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {cropCategories.map((cat) => (
+                {categories.map((cat) => (
                   <button
-                    key={cat}
-                    onClick={() => setSelectedCropFilter(cat)}
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.id)}
                     className={`px-3 py-1 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                      selectedCropFilter === cat
+                      selectedCategory === cat.id
                         ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
                         : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
                     }`}
                   >
-                    {cat === 'all' ? 'All Specimens' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    {cat.label}
                   </button>
                 ))}
               </div>
