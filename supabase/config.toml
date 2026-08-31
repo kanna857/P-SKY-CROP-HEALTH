@@ -1,0 +1,19 @@
+project_id = "efbzbkgyrwxvkasfpizp"
+
+[functions.send-alert]
+verify_jwt = false
+
+[functions.ndvi-monitor]
+verify_jwt = false
+
+[functions.get-weather]
+verify_jwt = false
+
+[functions.ai-recommendations]
+verify_jwt = false
+
+[functions.agromonitoring]
+verify_jwt = false
+
+[functions.diagnose-crop]
+verify_jwt = false
