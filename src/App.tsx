@@ -14,6 +14,7 @@ import AuthPage from "./pages/AuthPage";
 import DiagnosePage from "./pages/DiagnosePage";
 import ChatbotPage from "./pages/ChatbotPage";
 import HistoryPage from "./pages/HistoryPage";
+import SearchEnginePage from "./pages/SearchEnginePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/diagnose" element={<DiagnosePage />} />
             <Route path="/analyze" element={<AnalyzePage />} />
+            <Route path="/search" element={<SearchEnginePage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/compare" element={<CompareFieldsPage />} />
             <Route path="/chatbot" element={<ChatbotPage />} />
