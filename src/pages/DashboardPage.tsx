@@ -7,8 +7,6 @@ import { LayoutDashboard, TrendingUp, AlertTriangle, Leaf, MapPin, GitCompare, S
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { LivingFarm3D } from '@/components/3d/LivingFarm3D';
-import { RotatingGlobe3D } from '@/components/3d/RotatingGlobe3D';
 
 const DashboardPage = () => {
   // Generate mock data for all demo fields
@@ -74,17 +72,6 @@ const DashboardPage = () => {
               Compare Field Blocks
             </Button>
           </Link>
-        </div>
-
-        {/* 3D Living Ecosystem Row: 3D Living Farm (7 cols) + 3D Earth Globe (5 cols) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-7">
-            <LivingFarm3D height={320} />
-          </div>
-
-          <div className="lg:col-span-5">
-            <RotatingGlobe3D height={320} />
-          </div>
         </div>
 
         {/* 4 Stats Grid with Nature Icons */}
