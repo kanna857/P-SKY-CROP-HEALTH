@@ -1,7 +1,7 @@
 /**
  * Offline In-Browser Edge AI Inference Engine
  * Client-side foliar color-space segmentation and rule-based diagnostic heuristics
- * with Radiometric FLIR Thermal Colormap synthesis for remote offline field usage.
+ * for remote offline field usage.
  */
 
 export interface OfflineDiagnosisResponse {
@@ -20,18 +20,6 @@ export interface OfflineDiagnosisResponse {
     confidence: number;
     percentage: number;
   }>;
-  gradcam_heatmap?: string;
-  gradcam_overlay?: string;
-  thermal_ironbow?: string;
-  thermal_jet?: string;
-  thermal_inferno?: string;
-  thermal_stats?: {
-    peak_intensity: number;
-    mean_intensity: number;
-    peak_x: number;
-    peak_y: number;
-    equiv_temp_c: number;
-  };
   lesion_count?: number;
   infected_area_pct?: number;
   severity_stage?: string;
@@ -68,25 +56,10 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
           let chloroticPixels = 0;
           let totalFoliarPixels = 0;
 
-          // Thermal Map buffer
-          const heatCanvas = document.createElement('canvas');
-          heatCanvas.width = 256;
-          heatCanvas.height = 256;
-          const heatCtx = heatCanvas.getContext('2d');
-          const heatImageData = heatCtx ? heatCtx.createImageData(256, 256) : null;
-          const hData = heatImageData?.data;
-
-          let maxIntensity = 0;
-          let peakX = 0.5;
-          let peakY = 0.5;
-
           for (let i = 0; i < data.length; i += 4) {
             const r = data[i];
             const g = data[i + 1];
             const b = data[i + 2];
-            const pxIndex = i / 4;
-            const x = (pxIndex % 256) / 256;
-            const y = Math.floor(pxIndex / 256) / 256;
 
             const isFoliage = (g > r * 0.9 && g > b * 0.9 && g > 35) || (r > 60 && g > 50);
             if (isFoliage) {
@@ -94,47 +67,14 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
               const isNecrotic = (r > g * 0.9 && r > 65 && b < 130) || (r < 75 && g < 75 && b < 75);
               const isChlorotic = r > 140 && g > 140 && b < 100;
 
-              let heatVal = 0.15; // Base cool foliar temp
-
               if (isNecrotic) {
                 necroticPixels++;
-                heatVal = 0.92; // Hot necrotic lesion
               } else if (isChlorotic) {
                 chloroticPixels++;
-                heatVal = 0.65; // Warm chlorotic stress
               } else {
                 healthyGreenPixels++;
-                heatVal = 0.25; // Healthy cool tissue
               }
-
-              if (heatVal > maxIntensity) {
-                maxIntensity = heatVal;
-                peakX = x;
-                peakY = y;
-              }
-
-              if (hData) {
-                // FLIR Ironbow Colormap
-                const cr = Math.min(255, Math.max(0, Math.round(heatVal * 2.8 - 0.2) * 255));
-                const cg = Math.min(255, Math.max(0, Math.round(heatVal < 0.6 ? Math.pow(heatVal, 2.2) * 200 : (heatVal - 0.6) * 600)));
-                const cb = Math.min(255, Math.max(0, Math.round(heatVal < 0.3 ? Math.sin(heatVal * Math.PI / 0.6) * 255 : (heatVal > 0.85 ? (heatVal - 0.85) * 1600 : 0))));
-                
-                hData[i] = cr;
-                hData[i + 1] = cg;
-                hData[i + 2] = cb;
-                hData[i + 3] = 255;
-              }
-            } else if (hData) {
-              // Background dark void
-              hData[i] = 10;
-              hData[i + 1] = 14;
-              hData[i + 2] = 24;
-              hData[i + 3] = 255;
             }
-          }
-
-          if (heatCtx && heatImageData) {
-            heatCtx.putImageData(heatImageData, 0, 0);
           }
 
           const infectedPct = totalFoliarPixels > 0
@@ -174,8 +114,6 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
             ? 'Stage 2 (Moderate Spread)'
             : 'Stage 3 (Severe Damage)';
 
-          const thermalIronbowB64 = heatCanvas.toDataURL('image/jpeg', 0.90);
-
           resolve({
             raw_class: detectedClass,
             disease: detectedClass,
@@ -201,20 +139,9 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
                 percentage: 2.4
               }
             ],
-            gradcam_heatmap: thermalIronbowB64,
-            gradcam_overlay: thermalIronbowB64,
-            thermal_ironbow: thermalIronbowB64,
-            thermal_jet: thermalIronbowB64,
-            thermal_stats: {
-              peak_intensity: Math.round(maxIntensity * 100),
-              mean_intensity: Math.round(infectedPct * 1.5),
-              peak_x: roundDec(peakX, 3),
-              peak_y: roundDec(peakY, 3),
-              equiv_temp_c: roundDec(22.0 + maxIntensity * 16.5, 1)
-            },
-            lesion_count: lesionCount,
-            infected_area_pct: infectedPct,
-            severity_stage: severityStage,
+            lesionCount,
+            infectedAreaPct: infectedPct,
+            severityStage,
             is_offline_edge: true,
           });
         } catch (err) {
@@ -227,9 +154,4 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
 
     reader.readAsDataURL(file);
   });
-}
-
-function roundDec(val: number, decimals: number): number {
-  const factor = Math.pow(10, decimals);
-  return Math.round(val * factor) / factor;
 }

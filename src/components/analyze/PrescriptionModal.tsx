@@ -147,25 +147,9 @@ export function PrescriptionModal({ isOpen, onClose, data }: PrescriptionModalPr
                 <span className="text-[10px] text-emerald-400 font-mono">
                   {data.confidence} Match
                 </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <span className="text-[10px] text-gray-400">Original Scanned Sample</span>
-                  <div className="aspect-video rounded-xl overflow-hidden border border-white/10 bg-black/60">
-                    <img src={data.imagePreview} alt="Original Leaf" className="w-full h-full object-contain" />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <span className="text-[10px] text-emerald-400">Grad-CAM Neural Attention Heatmap</span>
-                  <div className="aspect-video rounded-xl overflow-hidden border border-emerald-500/30 bg-black/60">
-                    <img
-                      src={data.gradcamOverlay || data.imagePreview}
-                      alt="Grad-CAM Overlay"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
+              <div className="space-y-1">
+                <div className="aspect-video max-h-52 rounded-xl overflow-hidden border border-white/10 bg-black/60 flex items-center justify-center">
+                  <img src={data.imagePreview} alt="Scanned Leaf" className="w-full h-full object-contain" />
                 </div>
               </div>
             </div>

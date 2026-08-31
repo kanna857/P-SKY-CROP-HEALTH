@@ -30,16 +30,13 @@ import {
   Layers,
   HelpCircle,
   ShieldCheck,
-  Crosshair,
-  Columns,
-  Sparkle
+  Crosshair
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { getCropDiseaseInfo, TreatmentProtocol } from '@/lib/cropDiseaseData';
@@ -72,8 +69,6 @@ export interface DiagnosisResult {
   topPredictions?: PredictionCandidate[];
   rawConfidence?: number;
   rawClass?: string;
-  gradcamHeatmap?: string;
-  gradcamOverlay?: string;
   lesionCount?: number;
   infectedAreaPct?: number;
   severityStage?: string;
@@ -90,7 +85,6 @@ interface CameraUploadProps {
 const BACKEND_URL = 'http://localhost:8000';
 
 type ScanStage = 'upload' | 'scanning' | 'detecting' | 'result';
-type LayoutMode = 'side-by-side' | 'overlay';
 
 export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: CameraUploadProps) {
   const { toast } = useToast();
@@ -106,9 +100,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
   // Animated Confidence Display Counter
   const [displayConfidence, setDisplayConfidence] = useState(0);
 
-  // View Layout & Controls
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>('side-by-side');
-  const [overlayOpacity, setOverlayOpacity] = useState<number>(0.75);
+  // Controls
   const [showLesionBoxes, setShowLesionBoxes] = useState<boolean>(true);
 
   // Dosage Calculator State
@@ -181,8 +173,8 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           scientificName: diseaseInfo.scientificName,
           healthStatus: diseaseInfo.isHealthy ? 'Healthy' : 'Diseased',
           overallDiagnosis: diseaseInfo.isHealthy
-            ? 'The plant foliage exhibits optimal cellular chlorophyll and healthy vigor.'
-            : `High neural attention & foliar lesions detected for ${diseaseInfo.diseaseName}.`,
+            ? 'The plant foliage exhibits optimal chlorophyll density and healthy growth.'
+            : `Foliar infection identified as ${diseaseInfo.diseaseName}.`,
           severityScore: diseaseInfo.severity === 'High' ? 8 : diseaseInfo.severity === 'Medium' ? 5 : 2,
           treatment: diseaseInfo.treatment,
           recommendations: diseaseInfo.recommendations,
@@ -190,8 +182,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           rawConfidence: data.confidence,
           rawClass: classKey,
           topPredictions: data.top_predictions || [],
-          gradcamHeatmap: data.gradcam_heatmap || data.thermal_ironbow,
-          gradcamOverlay: data.gradcam_overlay,
           lesionCount: data.lesion_count ?? 0,
           infectedAreaPct: data.infected_area_pct ?? 0.0,
           severityStage: data.severity_stage ?? (diseaseInfo.isHealthy ? 'Stage 0 (Healthy)' : 'Stage 2 (Moderate Spread)'),
@@ -200,7 +190,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           diseases: !diseaseInfo.isHealthy ? [{
             name: diseaseInfo.diseaseName,
             confidence: `${(data.confidence * 100).toFixed(1)}%`,
-            description: 'Detected using PyTorch MobileNetV3 with Grad-CAM neural attention mapping.'
+            description: 'Identified using PyTorch MobileNetV3 deep pathology network.'
           }] : [],
         };
       } else {
@@ -228,8 +218,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           rawConfidence: data.confidence,
           rawClass: classKey,
           topPredictions: data.top_predictions || [],
-          gradcamHeatmap: data.gradcam_heatmap,
-          gradcamOverlay: data.gradcam_overlay,
           lesionCount: data.lesion_count ?? 0,
           infectedAreaPct: data.infected_area_pct ?? 0.0,
           severityStage: data.severity_stage ?? (isHealthy ? 'Stage 0 (Healthy)' : 'Stage 2 (Moderate Spread)'),
@@ -238,7 +226,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           diseases: !isHealthy ? [{
             name: diseasePart,
             confidence: `${(data.confidence * 100).toFixed(1)}%`,
-            description: 'Detected using PyTorch MobileNetV3 with Grad-CAM neural attention mapping.'
+            description: 'Identified using PyTorch MobileNetV3 deep pathology network.'
           }] : [],
         };
       }
@@ -259,7 +247,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
       }, 20);
 
       toast({
-        title: result.isOfflineEdge ? 'Edge AI Diagnosis Complete (Offline) 📴' : 'Diagnosis & Grad-CAM Complete! 🌿',
+        title: result.isOfflineEdge ? 'Edge AI Diagnosis (Offline) 📴' : 'Diagnosis Complete! 🌿',
         description: `Identified ${result.plantName} with ${(data.confidence * 100).toFixed(1)}% confidence.`,
       });
     } catch (err: unknown) {
@@ -379,7 +367,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
     recommendations: diagnosis.recommendations || ['Follow standard organic fungicide spray.'],
     preventiveMeasures: diagnosis.preventiveMeasures || ['Ensure proper soil aeration and canopy spacing.'],
     imagePreview: preview,
-    gradcamOverlay: diagnosis.gradcamOverlay,
     lesionCount: diagnosis.lesionCount,
     infectedAreaPct: diagnosis.infectedAreaPct,
     severityStage: diagnosis.severityStage,
@@ -397,7 +384,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             </div>
             <div>
               <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
-                AI Leaf Scanner & Grad-CAM Studio
+                AI Crop Disease Diagnostic Studio
                 {backendOnline === false ? (
                   <Badge className="bg-amber-500/20 text-amber-400 border-amber-400/40 text-[10px] gap-1">
                     <WifiOff className="w-3 h-3" /> Offline Edge
@@ -417,7 +404,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             <ChevronRight className="w-3 h-3 text-gray-600" />
             <span className={scanStage === 'scanning' ? 'text-emerald-400 font-extrabold animate-pulse' : 'text-gray-400'}>SCAN</span>
             <ChevronRight className="w-3 h-3 text-gray-600" />
-            <span className={scanStage === 'detecting' ? 'text-emerald-400 font-extrabold animate-pulse' : 'text-gray-400'}>GRAD-CAM</span>
+            <span className={scanStage === 'detecting' ? 'text-emerald-400 font-extrabold animate-pulse' : 'text-gray-400'}>AI PATHOLOGY</span>
             <ChevronRight className="w-3 h-3 text-gray-600" />
             <span className={scanStage === 'result' ? 'text-emerald-400 font-extrabold' : 'text-gray-400'}>DIAGNOSIS</span>
           </div>
@@ -454,172 +441,70 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           </div>
         ) : (
           <div className="space-y-3">
-            {/* SIDE-BY-SIDE DUAL VIEW: Left Original Leaf + Right Grad-CAM Attention Heatmap */}
-            {layoutMode === 'side-by-side' && diagnosis ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 relative">
-                {/* Left Panel: Original Leaf Image with Optional Bounding Boxes */}
-                <div className="relative rounded-2xl overflow-hidden border border-white/15 shadow-2xl bg-black/80 aspect-video flex items-center justify-center group select-none">
-                  <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 bg-black/80 px-2.5 py-1 rounded-xl border border-white/10">
-                    <Leaf className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">Original Leaf</span>
-                  </div>
+            {/* Visual Leaf Image Viewer with Optional Lesion Bounding Boxes */}
+            <div className="relative rounded-2xl overflow-hidden border border-white/15 shadow-2xl bg-black/80 aspect-video max-h-96 flex items-center justify-center group select-none">
+              <img src={preview} alt="Scanned Foliage" className="w-full h-full object-contain" />
 
-                  <img src={preview} alt="Original Leaf" className="w-full h-full object-contain" />
-
-                  {/* Lesion Bounding Boxes on Original */}
-                  {showLesionBoxes && diagnosis.lesionBoxes && diagnosis.lesionBoxes.length > 0 && diagnosis.healthStatus !== 'Healthy' && (
-                    <div className="absolute inset-0 pointer-events-none">
-                      {diagnosis.lesionBoxes.map((box, bIdx) => (
-                        <div
-                          key={bIdx}
-                          className="absolute border-2 border-red-500/90 rounded-lg bg-red-500/10 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"
-                          style={{
-                            top: `${box.ymin * 100}%`,
-                            left: `${box.xmin * 100}%`,
-                            width: `${(box.xmax - box.xmin) * 100}%`,
-                            height: `${(box.ymax - box.ymin) * 100}%`,
-                          }}
-                        >
-                          <span className="absolute -top-4 left-0 text-[8px] bg-red-600 text-white font-mono px-1 py-0.2 rounded shadow-md">
-                            Lesion #{bIdx + 1}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Right Panel: Grad-CAM Neural Attention Heatmap */}
-                <div className="relative rounded-2xl overflow-hidden border border-emerald-500/30 shadow-2xl bg-black/80 aspect-video flex items-center justify-center group select-none">
-                  <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 bg-black/80 px-2.5 py-1 rounded-xl border border-emerald-500/30">
-                    <Sparkle className="w-3.5 h-3.5 text-emerald-400 animate-spin" style={{ animationDuration: '8s' }} />
-                    <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">Grad-CAM Attention Map</span>
-                  </div>
-
-                  <img
-                    src={diagnosis.gradcamOverlay || diagnosis.gradcamHeatmap || preview}
-                    alt="Grad-CAM Attention Map"
-                    className="w-full h-full object-contain"
-                  />
-
-                  {/* Clear Button */}
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-2.5 right-2.5 rounded-full shadow-lg bg-black/80 hover:bg-destructive h-8 w-8 transition-transform hover:scale-110 z-30 border border-white/10"
-                    onClick={handleClear}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              /* Single Overlay View Mode */
-              <div className="relative rounded-2xl overflow-hidden border border-white/15 shadow-2xl bg-black/70 aspect-video max-h-80 flex items-center justify-center group select-none">
-                <img src={preview} alt="Original Leaf" className="w-full h-full object-contain" />
-
-                {diagnosis && (
-                  <div
-                    className="absolute inset-0 transition-opacity duration-300 pointer-events-none flex items-center justify-center"
-                    style={{ opacity: overlayOpacity }}
-                  >
-                    <img
-                      src={diagnosis.gradcamOverlay || diagnosis.gradcamHeatmap || preview}
-                      alt="Grad-CAM Overlay"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                )}
-
-                {/* Laser Scanning Animation */}
-                {isAnalyzing && (
-                  <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none">
-                    <div className="w-full h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_20px_rgba(16,185,129,1)] animate-scan relative">
-                      <span className="absolute top-1/2 left-[30%] -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_8px_rgba(74,222,128,1)] animate-ping" />
-                      <span className="absolute top-1/2 left-[70%] -translate-y-1/2 w-2 h-2 rounded-full bg-emerald-300 shadow-[0_0_6px_rgba(74,222,128,1)]" />
-                    </div>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                      <span className="px-4 py-2 rounded-2xl bg-black/85 text-emerald-400 text-xs font-mono font-bold tracking-wider animate-pulse border border-emerald-500/40 shadow-2xl">
-                        {scanStage === 'scanning' ? '🌿 EXTRACTING FOLIAR FEATURES...' : '🔬 COMPUTING GRAD-CAM ATTENTION MAP...'}
+              {/* Lesion Bounding Boxes */}
+              {diagnosis && showLesionBoxes && diagnosis.lesionBoxes && diagnosis.lesionBoxes.length > 0 && diagnosis.healthStatus !== 'Healthy' && (
+                <div className="absolute inset-0 pointer-events-none">
+                  {diagnosis.lesionBoxes.map((box, bIdx) => (
+                    <div
+                      key={bIdx}
+                      className="absolute border-2 border-red-500/90 rounded-lg bg-red-500/10 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"
+                      style={{
+                        top: `${box.ymin * 100}%`,
+                        left: `${box.xmin * 100}%`,
+                        width: `${(box.xmax - box.xmin) * 100}%`,
+                        height: `${(box.ymax - box.ymin) * 100}%`,
+                      }}
+                    >
+                      <span className="absolute -top-4 left-0 text-[8px] bg-red-600 text-white font-mono px-1.5 py-0.2 rounded shadow-md">
+                        Lesion #{bIdx + 1}
                       </span>
                     </div>
-                  </div>
-                )}
-
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="absolute top-2.5 right-2.5 rounded-full shadow-lg bg-black/80 hover:bg-destructive h-8 w-8 transition-transform hover:scale-110 z-30 border border-white/10"
-                  onClick={handleClear}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-
-            {/* Display Mode Toolbar (when diagnosed) */}
-            {diagnosis && (
-              <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                {/* Layout Switcher: Side-by-Side vs Overlay */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-gray-400 font-medium flex items-center gap-1 text-[11px]">
-                    <Columns className="w-3.5 h-3.5 text-emerald-400" /> View:
-                  </span>
-                  <div className="flex bg-black/60 p-0.5 rounded-xl border border-white/10">
-                    <button
-                      onClick={() => setLayoutMode('side-by-side')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                        layoutMode === 'side-by-side'
-                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
-                          : 'text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      👥 Side-by-Side (Original + Grad-CAM)
-                    </button>
-                    <button
-                      onClick={() => setLayoutMode('overlay')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                        layoutMode === 'overlay'
-                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
-                          : 'text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      🔲 Single Overlay
-                    </button>
-                  </div>
+                  ))}
                 </div>
+              )}
 
-                {/* Single Overlay Opacity Slider */}
-                {layoutMode === 'overlay' && (
-                  <div className="flex items-center gap-2 w-full sm:w-44">
-                    <span className="text-[10px] text-gray-400 whitespace-nowrap">Alpha:</span>
-                    <Slider
-                      value={[overlayOpacity * 100]}
-                      onValueChange={(val) => setOverlayOpacity(val[0] / 100)}
-                      max={100}
-                      min={10}
-                      step={5}
-                      className="w-full"
-                    />
-                    <span className="text-[10px] text-emerald-400 font-mono font-bold whitespace-nowrap">
-                      {Math.round(overlayOpacity * 100)}%
+              {/* Laser Scanning Animation */}
+              {isAnalyzing && (
+                <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none">
+                  <div className="w-full h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_20px_rgba(16,185,129,1)] animate-scan relative">
+                    <span className="absolute top-1/2 left-[30%] -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_8px_rgba(74,222,128,1)] animate-ping" />
+                    <span className="absolute top-1/2 left-[70%] -translate-y-1/2 w-2 h-2 rounded-full bg-emerald-300 shadow-[0_0_6px_rgba(74,222,128,1)]" />
+                  </div>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <span className="px-4 py-2 rounded-2xl bg-black/85 text-emerald-400 text-xs font-mono font-bold tracking-wider animate-pulse border border-emerald-500/40 shadow-2xl">
+                      {scanStage === 'scanning' ? '🌿 EXTRACTING FOLIAR CELLULAR FEATURES...' : '🔬 RUNNING DEEP PATHOLOGY NETWORK...'}
                     </span>
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Toggle Lesion Bounding Boxes */}
-                {diagnosis.healthStatus !== 'Healthy' && (
-                  <button
-                    onClick={() => setShowLesionBoxes(!showLesionBoxes)}
-                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all ${
-                      showLesionBoxes
-                        ? 'bg-red-500/20 text-red-400 border-red-500/40 shadow-sm'
-                        : 'bg-white/5 text-gray-400 border-white/10'
-                    }`}
-                  >
-                    {showLesionBoxes ? 'Lesion BBoxes ON' : 'Lesion BBoxes OFF'}
-                  </button>
-                )}
+              <Button
+                variant="destructive"
+                size="icon"
+                className="absolute top-2.5 right-2.5 rounded-full shadow-lg bg-black/80 hover:bg-destructive h-8 w-8 transition-transform hover:scale-110 z-30 border border-white/10"
+                onClick={handleClear}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Toggle Bounding Boxes (when diagnosed) */}
+            {diagnosis && diagnosis.healthStatus !== 'Healthy' && diagnosis.lesionBoxes && diagnosis.lesionBoxes.length > 0 && (
+              <div className="flex justify-end pt-1">
+                <button
+                  onClick={() => setShowLesionBoxes(!showLesionBoxes)}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all ${
+                    showLesionBoxes
+                      ? 'bg-red-500/20 text-red-400 border-red-500/40 shadow-sm'
+                      : 'bg-white/5 text-gray-400 border-white/10'
+                  }`}
+                >
+                  {showLesionBoxes ? '🎯 Lesion BBoxes Visible' : '🎯 Show Lesion BBoxes'}
+                </button>
               </div>
             )}
           </div>
@@ -654,12 +539,12 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             {isAnalyzing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Computing Deep Neural Diagnosis & Grad-CAM Attention Map...
+                Analyzing Foliage Pathology & Lesion Metrics...
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4 mr-2" />
-                Run AI Disease Diagnosis & Grad-CAM
+                Run AI Disease Diagnosis
               </>
             )}
           </Button>

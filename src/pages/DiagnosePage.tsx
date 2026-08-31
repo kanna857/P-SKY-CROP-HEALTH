@@ -160,7 +160,7 @@ const DiagnosePage = () => {
             <div className="space-y-3 max-w-2xl">
               <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-teal-500/20 border border-emerald-500/40 text-[11px] font-bold text-emerald-400 font-mono uppercase shadow-[0_0_15px_rgba(16,185,129,0.2)]">
                 <Sparkles className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
-                Next-Gen AI Plant Pathology Studio & Grad-CAM XAI
+                Next-Gen AI Plant Pathology Diagnostic Studio
               </div>
 
               <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
@@ -169,7 +169,7 @@ const DiagnosePage = () => {
               </h1>
 
               <p className="text-xs md:text-sm text-gray-200 leading-relaxed max-w-xl drop-shadow-sm">
-                Instant leaf pathology scanning powered by PyTorch MobileNetV3 (99.86% val accuracy). Features explainable Grad-CAM neural attention heatmaps, lesion surface quantification, certified PDF prescriptions, and 8-language voice remedies.
+                Instant leaf pathology scanning powered by PyTorch MobileNetV3 (99.86% val accuracy). Features automated lesion surface quantification, certified digital prescriptions, and 8-language voice remedies.
               </p>
             </div>
 
@@ -180,79 +180,82 @@ const DiagnosePage = () => {
                   <Leaf className="w-5 h-5 animate-leaf-sway" />
                 </div>
                 <div>
-                  <div className="font-display text-lg font-bold text-white leading-none">38</div>
-                  <div className="text-[10px] text-gray-300 mt-1">Disease Classes</div>
+                  <div className="text-base font-extrabold text-white font-mono flex items-baseline gap-1">
+                    99.86%
+                  </div>
+                  <div className="text-[10px] text-gray-400 font-medium">Model Accuracy</div>
                 </div>
               </div>
 
               <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#09111b]/85 border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.15)] min-w-[135px] backdrop-blur-md hover:border-cyan-500/60 hover:-translate-y-1 transition-all group">
                 <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 group-hover:scale-110 transition-transform">
-                  <Target className="w-5 h-5" />
+                  <Activity className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="font-display text-lg font-bold text-cyan-400 leading-none">99.86%</div>
-                  <div className="text-[10px] text-gray-300 mt-1">AI Accuracy</div>
+                  <div className="text-base font-extrabold text-white font-mono flex items-baseline gap-1">
+                    38 Types
+                  </div>
+                  <div className="text-[10px] text-gray-400 font-medium">Crops & Pathogens</div>
                 </div>
               </div>
 
               <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#09111b]/85 border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.15)] min-w-[135px] backdrop-blur-md hover:border-amber-500/60 hover:-translate-y-1 transition-all group">
                 <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
-                  <Zap className="w-5 h-5" />
+                  <Clock className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="font-display text-lg font-bold text-amber-400 leading-none">&lt;20ms</div>
-                  <div className="text-[10px] text-gray-300 mt-1">Edge Latency</div>
+                  <div className="text-base font-extrabold text-white font-mono flex items-baseline gap-1">
+                    &lt; 50 ms
+                  </div>
+                  <div className="text-[10px] text-gray-400 font-medium">Inference Latency</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Main Grid: Left Scanner & Right 8-Grid Sample Leaves */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: AI Leaf Disease Scanner (6 cols) */}
-          <div className="lg:col-span-6 space-y-6">
-            <CameraUpload sampleImageTrigger={sampleTrigger} />
-          </div>
-
-          {/* Right Column: Sample Leaves Gallery (6 cols) */}
-          <div className="lg:col-span-6 space-y-4">
-            {/* Quick Test Sample Leaves Gallery Card */}
-            <div className="p-6 rounded-3xl bg-[#0c1422]/90 border border-white/10 shadow-[0_0_35px_rgba(0,0,0,0.6)] backdrop-blur-2xl space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        {/* 2-Column Split Diagnostic Workbench */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Left Column: Specimen Selector Tray & Pathology Reference Cards (5 Cols) */}
+          <div className="lg:col-span-5 space-y-6">
+            <div className="p-6 rounded-3xl bg-[#0c1422]/90 border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <div className="flex items-center gap-2">
                   <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    <Scan className="w-4 h-4" />
+                    <Layers className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white font-display">
-                      Quick Test: Sample Foliar Pathology Gallery
+                    <h3 className="font-display text-sm font-bold text-white flex items-center gap-2">
+                      Foliar Specimen Library
+                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">
+                        6 Fast Test Samples
+                      </Badge>
                     </h3>
-                    <p className="text-[10px] text-gray-400 font-mono">1-Click Neural Disease Testing</p>
+                    <p className="text-[11px] text-gray-400">Pre-loaded pathology specimens</p>
                   </div>
-                </div>
-
-                {/* Filter Categories */}
-                <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-1">
-                  {categories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-xl transition-all shrink-0 ${
-                        selectedCategory === cat.id
-                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
-                          : 'bg-white/5 text-gray-400 hover:text-white border border-white/5'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
                 </div>
               </div>
 
-              <p className="text-xs text-gray-300 leading-relaxed">
-                Click any specimen below to instantly execute the PyTorch MobileNetV3 model, compute the Grad-CAM activation map, and generate the digital agronomist prescription.
-              </p>
+              {/* Crop Filter Category Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {cropCategories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCropFilter(cat)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                      selectedCropFilter === cat
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
+                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+                    }`}
+                  >
+                    {cat === 'all' ? 'All Specimens' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-[11px] text-gray-300 leading-relaxed bg-black/40 p-2.5 rounded-xl border border-white/5">
+                Click any specimen below to instantly execute the PyTorch MobileNetV3 model and generate the digital agronomist prescription.
+              </div>
 
               {/* 8-Grid Sample Leaf Cards (4 x 2) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
