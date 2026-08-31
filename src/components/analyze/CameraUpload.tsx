@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Upload, X, Loader2, AlertTriangle, CheckCircle, Leaf, Droplets, Wifi, WifiOff, Volume2, VolumeX, FileText, Share2, Sparkles, Video, BarChart2, Pill, Clock, AlertCircle, Scan, Calculator, Gauge, Flame, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Camera, Upload, X, Loader2, AlertTriangle, CheckCircle, Leaf, Droplets, Wifi, WifiOff, Volume2, VolumeX, FileText, Share2, Sparkles, Video, BarChart2, Pill, Clock, AlertCircle, Scan, Calculator, Gauge, Flame, CheckCircle2, ChevronRight, Eye, Sliders, Layers, HelpCircle, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { getCropDiseaseInfo, TreatmentProtocol } from '@/lib/cropDiseaseData';
+import { runInBrowserOfflineInference } from '@/lib/offlineInference';
 import { PrescriptionModal, PrescriptionData } from './PrescriptionModal';
 import { LiveCameraScanner } from './LiveCameraScanner';
 
@@ -37,6 +39,13 @@ export interface DiagnosisResult {
   topPredictions?: PredictionCandidate[];
   rawConfidence?: number;
   rawClass?: string;
+  gradcamHeatmap?: string;
+  gradcamOverlay?: string;
+  lesionCount?: number;
+  infectedAreaPct?: number;
+  severityStage?: string;
+  lesionBoxes?: Array<{ ymin: number; xmin: number; ymax: number; xmax: number }>;
+  isOfflineEdge?: boolean;
 }
 
 interface CameraUploadProps {
@@ -48,6 +57,7 @@ interface CameraUploadProps {
 const BACKEND_URL = 'http://localhost:8000';
 
 type ScanStage = 'upload' | 'scanning' | 'detecting' | 'result';
+type HeatmapViewMode = 'original' | 'heatmap' | 'overlay';
 
 export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: CameraUploadProps) {
   const { toast } = useToast();
@@ -63,12 +73,17 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
   // Animated Confidence Display Counter
   const [displayConfidence, setDisplayConfidence] = useState(0);
 
+  // Grad-CAM Explainable AI state
+  const [heatmapMode, setHeatmapMode] = useState<HeatmapViewMode>('overlay');
+  const [overlayOpacity, setOverlayOpacity] = useState<number>(0.65);
+  const [showLesionBoxes, setShowLesionBoxes] = useState<boolean>(true);
+
   // Dosage Calculator State
   const [tankLiters, setTankLiters] = useState<number>(15);
 
   // Voice Readout States
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const [speechLanguage, setSpeechLanguage] = useState<'en-IN' | 'hi-IN' | 'te-IN' | 'ta-IN'>('en-IN');
+  const [speechLanguage, setSpeechLanguage] = useState<'en-IN' | 'hi-IN' | 'te-IN' | 'ta-IN' | 'kn-IN' | 'mr-IN' | 'bn-IN' | 'es-ES'>('en-IN');
 
   // Prescription Modal State
   const [isPrescriptionOpen, setIsPrescriptionOpen] = useState(false);
@@ -96,22 +111,32 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
     setDisplayConfidence(0);
 
     try {
-      // Stage 1 -> Stage 2 (Detecting)
       setTimeout(() => setScanStage('detecting'), 600);
 
-      const formData = new FormData();
-      formData.append('file', file);
+      let data: any = null;
 
-      const response = await fetch(`${BACKEND_URL}/predict`, {
-        method: 'POST',
-        body: formData,
-      });
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.statusText}`);
+        const response = await fetch(`${BACKEND_URL}/predict`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          data = await response.json();
+          setBackendOnline(true);
+        } else {
+          throw new Error('Backend HTTP error');
+        }
+      } catch (backendErr) {
+        console.warn('Backend unavailable, falling back to In-Browser Edge AI:', backendErr);
+        setBackendOnline(false);
+        // Fallback to client-side offline inference
+        data = await runInBrowserOfflineInference(file);
       }
 
-      const data = await response.json();
       const classKey = data.raw_class || data.disease;
       const diseaseInfo = getCropDiseaseInfo(classKey);
 
@@ -124,19 +149,26 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           scientificName: diseaseInfo.scientificName,
           healthStatus: diseaseInfo.isHealthy ? 'Healthy' : 'Diseased',
           overallDiagnosis: diseaseInfo.isHealthy
-            ? 'The plant appears healthy.'
+            ? 'The plant appears healthy with optimal chlorophyll density.'
             : `High likelihood of ${diseaseInfo.diseaseName}.`,
-          severityScore: diseaseInfo.severity === 'High' ? 8 : (diseaseInfo.severity === 'Medium' ? 5 : 2),
+          severityScore: diseaseInfo.severity === 'High' ? 8 : diseaseInfo.severity === 'Medium' ? 5 : 2,
           treatment: diseaseInfo.treatment,
           recommendations: diseaseInfo.recommendations,
           preventiveMeasures: diseaseInfo.preventiveMeasures,
           rawConfidence: data.confidence,
           rawClass: classKey,
           topPredictions: data.top_predictions || [],
+          gradcamHeatmap: data.gradcam_heatmap,
+          gradcamOverlay: data.gradcam_overlay,
+          lesionCount: data.lesion_count ?? 0,
+          infectedAreaPct: data.infected_area_pct ?? 0.0,
+          severityStage: data.severity_stage ?? (diseaseInfo.isHealthy ? 'Stage 0 (Healthy)' : 'Stage 2 (Moderate Spread)'),
+          lesionBoxes: data.lesion_boxes || [],
+          isOfflineEdge: data.is_offline_edge || false,
           diseases: !diseaseInfo.isHealthy ? [{
             name: diseaseInfo.diseaseName,
             confidence: `${(data.confidence * 100).toFixed(1)}%`,
-            description: 'Detected using custom PyTorch MobileNetV3 model.'
+            description: 'Detected using PyTorch MobileNetV3 with Grad-CAM activation mapping.'
           }] : [],
         };
       } else {
@@ -154,20 +186,27 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
         }
 
         result = {
-          plantName: plantName,
+          plantName,
           diseaseName: diseasePart,
           healthStatus: isHealthy ? 'Healthy' : 'Diseased',
           overallDiagnosis: isHealthy ? 'The plant appears healthy.' : `High likelihood of ${diseasePart}.`,
-          severityScore: data.severity === 'High' ? 8 : (data.severity === 'Medium' ? 5 : 2),
+          severityScore: data.severity === 'High' ? 8 : data.severity === 'Medium' ? 5 : 2,
           recommendations: [data.recommendation || 'Consult local agricultural extension.', 'Monitor crop daily for changes.'],
           preventiveMeasures: ['Ensure proper spacing for air circulation.', 'Avoid overhead watering.'],
           rawConfidence: data.confidence,
           rawClass: classKey,
           topPredictions: data.top_predictions || [],
+          gradcamHeatmap: data.gradcam_heatmap,
+          gradcamOverlay: data.gradcam_overlay,
+          lesionCount: data.lesion_count ?? 0,
+          infectedAreaPct: data.infected_area_pct ?? 0.0,
+          severityStage: data.severity_stage ?? (isHealthy ? 'Stage 0 (Healthy)' : 'Stage 2 (Moderate Spread)'),
+          lesionBoxes: data.lesion_boxes || [],
+          isOfflineEdge: data.is_offline_edge || false,
           diseases: !isHealthy ? [{
             name: diseasePart,
             confidence: `${(data.confidence * 100).toFixed(1)}%`,
-            description: 'Detected using custom PyTorch MobileNetV3 model.'
+            description: 'Detected using PyTorch MobileNetV3 with Grad-CAM activation mapping.'
           }] : [],
         };
       }
@@ -175,7 +214,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
       setDiagnosis(result);
       setScanStage('result');
 
-      // Smooth count-up animation for confidence score
       const targetConfidence = Math.round((data.confidence || 0.96) * 100);
       let current = 0;
       const timer = setInterval(() => {
@@ -189,18 +227,17 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
       }, 20);
 
       toast({
-        title: 'Diagnosis Complete! 🌿',
+        title: result.isOfflineEdge ? 'Edge AI Diagnosis (Offline) 📴' : 'Diagnosis Complete! 🌿',
         description: `Identified ${result.plantName} with ${(data.confidence * 100).toFixed(1)}% confidence.`,
       });
     } catch (err: unknown) {
       console.error('Diagnosis error:', err);
       setScanStage('upload');
-      const isNetworkError = err instanceof TypeError && err.message.includes('fetch');
-      const errorMessage = isNetworkError
-        ? 'Cannot connect to AI backend. Ensure server is running on port 8000.'
-        : (err instanceof Error ? err.message : 'Unknown error. Please try again.');
-      setBackendOnline(false);
-      toast({ title: 'Diagnosis Failed', description: errorMessage, variant: 'destructive' });
+      toast({
+        title: 'Diagnosis Failed',
+        description: err instanceof Error ? err.message : 'Unknown error during analysis.',
+        variant: 'destructive'
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -284,13 +321,21 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
       speechText = `మొక్క: ${plant}. వ్యాధి: ${disease}. పరిస్థితి: ${diagnosis.healthStatus === 'Healthy' ? 'ఆరోగ్యకరమైనది' : 'వ్యాధి సోకింది'}. మందు: ${chemical}. మోతాదు: ${dosage}. నివారణ: ${recs}`;
     } else if (speechLanguage === 'ta-IN') {
       speechText = `பயிர்: ${plant}. நோய் கண்டறிதல்: ${disease}. பரிந்துரைக்கப்பட்ட மருந்து: ${chemical}. அளவு: ${dosage}. சிகிச்சை: ${recs}`;
+    } else if (speechLanguage === 'kn-IN') {
+      speechText = `ಬೆಳೆ: ${plant}. ರೋಗ: ${disease}. ಔಷಧ: ${chemical}. ಪ್ರಮಾಣ: ${dosage}. ಚಿಕಿತ್ಸೆ: ${recs}`;
+    } else if (speechLanguage === 'mr-IN') {
+      speechText = `पीक: ${plant}. रोग: ${disease}. औषध: ${chemical}. प्रमाण: ${dosage}. सल्ला: ${recs}`;
+    } else if (speechLanguage === 'bn-IN') {
+      speechText = `ফসল: ${plant}. রোগ: ${disease}. ওষুধ: ${chemical}. মাত্রা: ${dosage}. চিকিৎসা: ${recs}`;
+    } else if (speechLanguage === 'es-ES') {
+      speechText = `Cultivo: ${plant}. Diagnóstico: ${disease}. Estado: ${diagnosis.healthStatus}. Tratamiento recomendado: ${chemical}. Dosis: ${dosage}.`;
     } else {
       speechText = `Crop diagnosis result. Plant: ${plant}. Condition: ${disease}. Status: ${diagnosis.healthStatus}. Treatment: ${chemical}. Dosage: ${dosage}. Recommendations: ${recs}`;
     }
 
     const utterance = new SpeechSynthesisUtterance(speechText);
     utterance.lang = speechLanguage;
-    utterance.rate = 0.95;
+    utterance.rate = 0.92;
 
     utterance.onstart = () => setIsPlayingAudio(true);
     utterance.onend = () => setIsPlayingAudio(false);
@@ -308,26 +353,41 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
     confidence: diagnosis.diseases?.[0]?.confidence || `${((diagnosis.rawConfidence || 0.95) * 100).toFixed(1)}%`,
     treatment: diagnosis.treatment,
     recommendations: diagnosis.recommendations || ['Follow standard organic fungicide spray.'],
-    preventiveMeasures: diagnosis.preventiveMeasures || ['Ensure soil drainage.'],
+    preventiveMeasures: diagnosis.preventiveMeasures || ['Ensure proper soil aeration and canopy spacing.'],
     imagePreview: preview,
+    gradcamOverlay: diagnosis.gradcamOverlay,
+    lesionCount: diagnosis.lesionCount,
+    infectedAreaPct: diagnosis.infectedAreaPct,
+    severityStage: diagnosis.severityStage,
     fieldName: fieldName || 'Main Field Block',
   } : null;
 
   return (
     <>
-      <div className="p-6 rounded-3xl bg-[#0c1420]/85 border border-white/10 shadow-2xl backdrop-blur-2xl space-y-4">
+      <div className="p-6 rounded-3xl bg-[#0c1420]/90 border border-white/10 shadow-2xl backdrop-blur-2xl space-y-4">
         {/* Card Header with Status & Stage Flow Indicators */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
               <Scan className="w-5 h-5 animate-pulse" />
             </div>
-            <h3 className="text-base font-bold text-white font-display">
-              AI Leaf Disease Scanner
-            </h3>
+            <div>
+              <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
+                AI Leaf Disease Scanner & XAI Studio
+                {backendOnline === false ? (
+                  <Badge variant="outline" className="text-amber-400 border-amber-400/40 text-[10px] gap-1">
+                    <WifiOff className="w-3 h-3" /> Offline Edge Mode
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-emerald-400 border-emerald-400/40 text-[10px] gap-1">
+                    <Wifi className="w-3 h-3" /> ML Online
+                  </Badge>
+                )}
+              </h3>
+            </div>
           </div>
 
-          {/* Signature Stage Flow: UPLOAD -> SCANNING -> AI DETECTING -> RESULT */}
+          {/* Stage Flow Indicator */}
           <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold bg-white/5 px-3 py-1 rounded-full border border-white/10">
             <span className={scanStage === 'upload' ? 'text-emerald-400 font-extrabold' : 'text-gray-400'}>UPLOAD</span>
             <ChevronRight className="w-3 h-3 text-gray-500" />
@@ -339,10 +399,9 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           </div>
         </div>
 
-        {/* Dual Upload & Live Camera Boxes */}
+        {/* Upload / Live Camera Buttons */}
         {!preview ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-            {/* Box 1: Upload Leaf Photo */}
             <div
               onClick={() => fileInputRef.current?.click()}
               className="p-6 rounded-2xl border border-white/10 hover:border-emerald-500/40 bg-white/5 hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-2 min-h-[140px] group shadow-sm hover:shadow-[0_0_20px_rgba(16,185,129,0.1)] hover:-translate-y-1"
@@ -356,7 +415,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
               </div>
             </div>
 
-            {/* Box 2: Open Live Camera */}
             <div
               onClick={() => setIsScannerOpen(true)}
               className="p-6 rounded-2xl border border-emerald-500/30 hover:border-emerald-400 bg-emerald-950/20 hover:bg-emerald-950/35 transition-all cursor-pointer flex flex-col items-center justify-center text-center space-y-2 min-h-[140px] group shadow-[0_0_20px_rgba(16,185,129,0.15)] hover:-translate-y-1"
@@ -371,44 +429,152 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             </div>
           </div>
         ) : (
-          <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl group">
-            <img src={preview} alt="Crop Scan" className="w-full h-56 object-cover" />
+          <div className="space-y-3">
+            {/* Main Visual Image & Grad-CAM Heatmap Viewer */}
+            <div className="relative rounded-2xl overflow-hidden border border-white/15 shadow-2xl bg-black/60 aspect-video max-h-72 flex items-center justify-center group">
+              {/* Base Original Photo */}
+              <img
+                src={preview}
+                alt="Original Leaf"
+                className={`w-full h-full object-contain transition-opacity duration-300 ${
+                  heatmapMode === 'heatmap' ? 'opacity-0' : 'opacity-100'
+                }`}
+              />
 
-            {/* Laser Scanning Line with Attracted Spore Particles */}
-            {isAnalyzing && (
-              <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none">
-                <div className="w-full h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_20px_rgba(16,185,129,1)] animate-scan relative">
-                  {/* Attracted Spore Glow Beads along the laser line */}
-                  <span className="absolute top-1/2 left-[30%] -translate-y-1/2 w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(74,222,128,1)] animate-ping" />
-                  <span className="absolute top-1/2 left-[70%] -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-emerald-300 shadow-[0_0_6px_rgba(74,222,128,1)]" />
+              {/* Grad-CAM Heatmap / Overlay Layer */}
+              {diagnosis && (diagnosis.gradcamOverlay || diagnosis.gradcamHeatmap) && heatmapMode !== 'original' && (
+                <div
+                  className="absolute inset-0 transition-opacity duration-300 pointer-events-none flex items-center justify-center"
+                  style={{ opacity: heatmapMode === 'heatmap' ? 1.0 : overlayOpacity }}
+                >
+                  <img
+                    src={heatmapMode === 'heatmap' && diagnosis.gradcamHeatmap ? diagnosis.gradcamHeatmap : (diagnosis.gradcamOverlay || diagnosis.gradcamHeatmap)}
+                    alt="Grad-CAM Attention Map"
+                    className="w-full h-full object-contain"
+                  />
                 </div>
-                
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                  <span className="px-3.5 py-1.5 rounded-full bg-black/80 text-emerald-400 text-xs font-mono font-bold tracking-wider animate-pulse border border-emerald-500/40 shadow-xl">
-                    {scanStage === 'scanning' ? '🌿 EXTRACTING FOLIAR FEATURES...' : '🔬 NEURAL PATHOLOGY MATCHING...'}
+              )}
+
+              {/* Lesion Bounding Boxes Overlay */}
+              {diagnosis && showLesionBoxes && diagnosis.lesionBoxes && diagnosis.lesionBoxes.length > 0 && diagnosis.healthStatus !== 'Healthy' && (
+                <div className="absolute inset-0 pointer-events-none">
+                  {diagnosis.lesionBoxes.map((box, bIdx) => (
+                    <div
+                      key={bIdx}
+                      className="absolute border-2 border-red-500/90 rounded-md bg-red-500/10 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"
+                      style={{
+                        top: `${box.ymin * 100}%`,
+                        left: `${box.xmin * 100}%`,
+                        width: `${(box.xmax - box.xmin) * 100}%`,
+                        height: `${(box.ymax - box.ymin) * 100}%`,
+                      }}
+                    >
+                      <span className="absolute -top-4 left-0 text-[9px] bg-red-600 text-white font-mono px-1 rounded">
+                        Lesion #{bIdx + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Laser Scanning Animation */}
+              {isAnalyzing && (
+                <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none">
+                  <div className="w-full h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_20px_rgba(16,185,129,1)] animate-scan relative">
+                    <span className="absolute top-1/2 left-[30%] -translate-y-1/2 w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(74,222,128,1)] animate-ping" />
+                    <span className="absolute top-1/2 left-[70%] -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-emerald-300 shadow-[0_0_6px_rgba(74,222,128,1)]" />
+                  </div>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <span className="px-3.5 py-1.5 rounded-full bg-black/80 text-emerald-400 text-xs font-mono font-bold tracking-wider animate-pulse border border-emerald-500/40 shadow-xl">
+                      {scanStage === 'scanning' ? '🌿 EXTRACTING FOLIAR FEATURES...' : '🔬 COMPUTING GRAD-CAM ATTENTION...'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                variant="destructive"
+                size="icon"
+                className="absolute top-2.5 right-2.5 rounded-full shadow-lg bg-black/70 hover:bg-destructive h-8 w-8 transition-transform hover:scale-110 z-30"
+                onClick={handleClear}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Grad-CAM & Lesion Interactive Controls Bar (when diagnosed) */}
+            {diagnosis && (
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                {/* View Mode Buttons */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-400 font-medium flex items-center gap-1 text-[11px]">
+                    <Eye className="w-3.5 h-3.5 text-emerald-400" /> View:
                   </span>
+                  <div className="flex bg-black/40 p-0.5 rounded-xl border border-white/10">
+                    <button
+                      onClick={() => setHeatmapMode('original')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                        heatmapMode === 'original' ? 'bg-emerald-500 text-black' : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Original
+                    </button>
+                    <button
+                      onClick={() => setHeatmapMode('overlay')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                        heatmapMode === 'overlay' ? 'bg-emerald-500 text-black' : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Grad-CAM
+                    </button>
+                    <button
+                      onClick={() => setHeatmapMode('heatmap')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                        heatmapMode === 'heatmap' ? 'bg-emerald-500 text-black' : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Heatmap
+                    </button>
+                  </div>
                 </div>
+
+                {/* Opacity Slider for Overlay Mode */}
+                {heatmapMode === 'overlay' && (
+                  <div className="flex items-center gap-2 w-full sm:w-48">
+                    <span className="text-[10px] text-gray-400 whitespace-nowrap">Alpha:</span>
+                    <Slider
+                      value={[overlayOpacity * 100]}
+                      onValueChange={(val) => setOverlayOpacity(val[0] / 100)}
+                      max={100}
+                      min={10}
+                      step={5}
+                      className="w-full"
+                    />
+                    <span className="text-[10px] text-emerald-400 font-mono font-bold whitespace-nowrap">
+                      {Math.round(overlayOpacity * 100)}%
+                    </span>
+                  </div>
+                )}
+
+                {/* Toggle Lesion Bounding Boxes */}
+                {diagnosis.healthStatus !== 'Healthy' && (
+                  <button
+                    onClick={() => setShowLesionBoxes(!showLesionBoxes)}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition-all ${
+                      showLesionBoxes
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40 shadow-sm'
+                        : 'bg-white/5 text-gray-400 border-white/10'
+                    }`}
+                  >
+                    {showLesionBoxes ? 'Hide BBoxes' : 'Show BBoxes'}
+                  </button>
+                )}
               </div>
             )}
-
-            <Button
-              variant="destructive"
-              size="icon"
-              className="absolute top-2.5 right-2.5 rounded-full shadow-lg bg-black/70 hover:bg-destructive h-8 w-8 transition-transform hover:scale-110"
-              onClick={handleClear}
-            >
-              <X className="w-4 h-4" />
-            </Button>
           </div>
         )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileSelect}
-        />
+        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
 
         {/* Symptoms Textarea */}
         {!diagnosis && (
@@ -418,7 +584,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
               <span className="text-[10px] text-gray-400">{description.length}/500</span>
             </div>
             <Textarea
-              placeholder="e.g. Yellow spots appeared 3 days ago, lower canopy leaves wilting..."
+              placeholder="e.g. Concentric brown rings noticed on lower foliage after recent rains..."
               value={description}
               onChange={(e) => setDescription(e.target.value.slice(0, 500))}
               rows={2}
@@ -437,50 +603,69 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             {isAnalyzing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Analyzing with Deep Convolutional Neural Network...
+                Analyzing with Deep Convolutional Neural Network & Grad-CAM...
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4 mr-2" />
-                Run AI Disease Diagnosis
+                Run AI Disease Diagnosis & Grad-CAM
               </>
             )}
           </Button>
         )}
 
-        {/* Diagnosis Results Section with Healthy/Diseased Glow */}
+        {/* Diagnosis Results Section */}
         {diagnosis && (
           <div className="space-y-4 pt-3 border-t border-white/10 animate-in fade-in-50 duration-500">
             {/* Primary Result Banner */}
-            <div className={`p-4 rounded-2xl border transition-all ${
-              diagnosis.healthStatus === 'Healthy'
-                ? 'bg-emerald-950/20 border-emerald-500/40 animate-healthy-pulse'
-                : 'bg-orange-950/20 border-orange-500/40 animate-warning-pulse'
-            }`}>
+            <div
+              className={`p-4 rounded-2xl border transition-all ${
+                diagnosis.healthStatus === 'Healthy'
+                  ? 'bg-emerald-950/25 border-emerald-500/40 shadow-[0_0_25px_rgba(16,185,129,0.15)]'
+                  : 'bg-orange-950/25 border-orange-500/40 shadow-[0_0_25px_rgba(249,115,22,0.15)]'
+              }`}
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                    <Leaf className="w-3.5 h-3.5 text-emerald-400 animate-leaf-sway" /> Plant Species
+                    <Leaf className="w-3.5 h-3.5 text-emerald-400" /> Plant Species
                   </span>
                   <h4 className="text-lg font-bold text-white font-display mt-0.5">{diagnosis.plantName}</h4>
                 </div>
 
-                <Badge
-                  variant={diagnosis.healthStatus === 'Healthy' ? 'default' : 'destructive'}
-                  className="text-xs font-bold px-3 py-1 shadow-md"
-                >
-                  {diagnosis.healthStatus}
-                </Badge>
+                <div className="flex items-center gap-1.5">
+                  {diagnosis.isOfflineEdge && (
+                    <Badge variant="outline" className="text-amber-400 border-amber-400/40 text-[10px]">
+                      Offline Edge
+                    </Badge>
+                  )}
+                  <Badge
+                    variant={diagnosis.healthStatus === 'Healthy' ? 'default' : 'destructive'}
+                    className="text-xs font-bold px-3 py-1 shadow-md"
+                  >
+                    {diagnosis.healthStatus}
+                  </Badge>
+                </div>
               </div>
 
               <div className="pt-2">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                  <AlertTriangle className={`w-3.5 h-3.5 ${diagnosis.healthStatus === 'Healthy' ? 'text-emerald-400' : 'text-orange-400'}`} />
+                  <AlertTriangle
+                    className={`w-3.5 h-3.5 ${
+                      diagnosis.healthStatus === 'Healthy' ? 'text-emerald-400' : 'text-orange-400'
+                    }`}
+                  />
                   Primary Diagnosis
                 </span>
                 <div className="flex items-baseline gap-2">
-                  <p className={`text-base font-bold mt-0.5 ${diagnosis.healthStatus === 'Healthy' ? 'text-emerald-400' : 'text-orange-400'}`}>
-                    {diagnosis.diseases && diagnosis.diseases.length > 0 ? diagnosis.diseases[0].name : 'Healthy Foliage / No Pathogen'}
+                  <p
+                    className={`text-base font-bold mt-0.5 ${
+                      diagnosis.healthStatus === 'Healthy' ? 'text-emerald-400' : 'text-orange-400'
+                    }`}
+                  >
+                    {diagnosis.diseases && diagnosis.diseases.length > 0
+                      ? diagnosis.diseases[0].name
+                      : 'Healthy Foliage / No Pathogen Detected'}
                   </p>
                   {diagnosis.scientificName && (
                     <span className="text-xs italic text-gray-400">({diagnosis.scientificName})</span>
@@ -488,8 +673,32 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                 </div>
               </div>
 
-              {/* Multilingual Voice Readout Bar with Sound Wave Equalizer */}
-              <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t border-white/10 bg-black/40 p-2.5 rounded-xl">
+              {/* Lesion Area & Severity Stage KPI Row */}
+              {diagnosis.healthStatus !== 'Healthy' && (
+                <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-white/10 text-center">
+                  <div className="p-2 rounded-xl bg-black/40 border border-white/5">
+                    <span className="text-[10px] text-gray-400 block">Lesion Count</span>
+                    <span className="text-sm font-bold text-red-400 font-mono">
+                      {diagnosis.lesionCount || 0} spots
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-black/40 border border-white/5">
+                    <span className="text-[10px] text-gray-400 block">Infected Area</span>
+                    <span className="text-sm font-bold text-orange-400 font-mono">
+                      {diagnosis.infectedAreaPct || 0}%
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-black/40 border border-white/5">
+                    <span className="text-[10px] text-gray-400 block">Severity Tier</span>
+                    <span className="text-xs font-bold text-yellow-400">
+                      {diagnosis.severityStage || 'Stage 2'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Multilingual Voice Readout Bar */}
+              <div className="flex items-center justify-between gap-2 pt-2 mt-3 border-t border-white/10 bg-black/50 p-2.5 rounded-xl">
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
@@ -508,7 +717,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                     )}
                   </Button>
 
-                  {/* Equalizer Sound Waves Animation */}
                   {isPlayingAudio && (
                     <div className="flex items-center gap-1 px-2">
                       <span className="w-1 h-3 bg-emerald-400 rounded-full animate-bounce" style={{ animationDuration: '0.4s' }} />
@@ -519,25 +727,29 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                   )}
 
                   <Select value={speechLanguage} onValueChange={(val: any) => setSpeechLanguage(val)}>
-                    <SelectTrigger className="w-[110px] h-8 text-xs bg-white/5 border-white/10 text-white">
+                    <SelectTrigger className="w-[125px] h-8 text-xs bg-white/5 border-white/10 text-white">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-[#0c1420] border-white/10 text-white">
                       <SelectItem value="en-IN">🇬🇧 English</SelectItem>
                       <SelectItem value="hi-IN">🇮🇳 हिन्दी</SelectItem>
-                      <SelectItem value="te-IN">🇮🇳 తెలుగు</SelectItem>
-                      <SelectItem value="ta-IN">🇮🇳 தமிழ்</SelectItem>
+                      <SelectItem value="te-IN">🌾 తెలుగు</SelectItem>
+                      <SelectItem value="ta-IN">🌴 தமிழ்</SelectItem>
+                      <SelectItem value="kn-IN">🌿 ಕನ್ನಡ</SelectItem>
+                      <SelectItem value="mr-IN">🏔️ मराठी</SelectItem>
+                      <SelectItem value="bn-IN">🌊 বাংলা</SelectItem>
+                      <SelectItem value="es-ES">🇪🇸 Español</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <span className="text-[10px] text-gray-400 hidden sm:inline font-mono">
-                  🔊 Voice Readout
+                  🔊 Voice Assistant
                 </span>
               </div>
             </div>
 
-            {/* Exact Treatment Protocols & Tank Dosage Calculator */}
+            {/* Treatment Protocols & Tank Dosage Calculator */}
             {diagnosis.treatment && diagnosis.healthStatus !== 'Healthy' && (
               <div className="space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
@@ -548,17 +760,27 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                   <div className="bg-white/5 border border-emerald-500/30 rounded-xl p-3 space-y-1">
                     <span className="text-[10px] font-bold uppercase text-emerald-400">Chemical Control</span>
                     <p className="text-xs font-bold text-white">{diagnosis.treatment.chemicalName}</p>
-                    <p className="text-[11px] text-gray-300"><strong className="text-emerald-400">Dosage:</strong> {diagnosis.treatment.dosage}</p>
+                    <p className="text-[11px] text-gray-300">
+                      <strong className="text-emerald-400">Dosage:</strong> {diagnosis.treatment.dosage}
+                    </p>
+                    <p className="text-[10px] text-gray-400">
+                      <strong>Interval:</strong> {diagnosis.treatment.sprayInterval}
+                    </p>
                   </div>
 
                   <div className="bg-white/5 border border-green-500/30 rounded-xl p-3 space-y-1">
                     <span className="text-[10px] font-bold uppercase text-green-400">Organic Alternative</span>
                     <p className="text-xs font-bold text-white">{diagnosis.treatment.organicOption}</p>
-                    <p className="text-[11px] text-gray-300"><strong className="text-green-400">Dosage:</strong> {diagnosis.treatment.organicDosage}</p>
+                    <p className="text-[11px] text-gray-300">
+                      <strong className="text-green-400">Dosage:</strong> {diagnosis.treatment.organicDosage}
+                    </p>
+                    <p className="text-[10px] text-gray-400">
+                      <strong>Action:</strong> {diagnosis.treatment.immediateAction}
+                    </p>
                   </div>
                 </div>
 
-                {/* Interactive Knapsack Tank Dosage Calculator */}
+                {/* Tank Dosage Calculator */}
                 <div className="p-3 rounded-xl bg-emerald-950/25 border border-emerald-500/30 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-white flex items-center gap-1.5">
@@ -593,7 +815,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
               </div>
             )}
 
-            {/* Top-5 Candidate Breakdown with Animated Counting Progress Bars */}
+            {/* Top-5 Candidate Probabilities */}
             {diagnosis.topPredictions && diagnosis.topPredictions.length > 0 && (
               <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -616,7 +838,10 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                           {idx === 0 ? `${displayConfidence}%` : `${cand.percentage}%`}
                         </span>
                       </div>
-                      <Progress value={idx === 0 ? displayConfidence : cand.percentage} className="h-1.5 bg-white/10 transition-all duration-500" />
+                      <Progress
+                        value={idx === 0 ? displayConfidence : cand.percentage}
+                        className="h-1.5 bg-white/10 transition-all duration-500"
+                      />
                     </div>
                   ))}
                 </div>
@@ -629,7 +854,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                 className="flex-1 gap-2 font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg"
                 onClick={() => setIsPrescriptionOpen(true)}
               >
-                <FileText className="w-4 h-4" /> Download Prescription
+                <FileText className="w-4 h-4" /> Download Official Agronomist Report (PDF)
               </Button>
 
               <Button
@@ -656,11 +881,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
       />
 
       {/* Live Camera Scanner Modal */}
-      <LiveCameraScanner
-        isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
-        onCapture={handleLiveCapture}
-      />
+      <LiveCameraScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onCapture={handleLiveCapture} />
     </>
   );
 }

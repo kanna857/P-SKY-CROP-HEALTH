@@ -246,3 +246,64 @@ export function generateNDVIData(baseNDVI: number): NDVIData {
     weatherRisk,
   };
 }
+
+export type SpectralIndexType = 'NDVI' | 'EVI' | 'SAVI' | 'NDWI' | 'NDRE';
+
+export interface SpectralIndexInfo {
+  type: SpectralIndexType;
+  name: string;
+  fullName: string;
+  formula: string;
+  description: string;
+  optimalRange: string;
+  palette: string;
+}
+
+export const SPECTRAL_INDICES: Record<SpectralIndexType, SpectralIndexInfo> = {
+  NDVI: {
+    type: 'NDVI',
+    name: 'NDVI',
+    fullName: 'Normalized Difference Vegetation Index',
+    formula: '(NIR - Red) / (NIR + Red)',
+    description: 'Measures overall plant vigor, biomass density, and green canopy health.',
+    optimalRange: '0.60 - 0.85',
+    palette: 'from-red-500 via-yellow-400 to-emerald-500',
+  },
+  EVI: {
+    type: 'EVI',
+    name: 'EVI',
+    fullName: 'Enhanced Vegetation Index',
+    formula: '2.5 * (NIR - Red) / (NIR + 6*Red - 7.5*Blue + 1)',
+    description: 'High-biomass canopy penetration with atmospheric & soil resistance (avoids saturation).',
+    optimalRange: '0.45 - 0.75',
+    palette: 'from-amber-600 via-lime-400 to-green-600',
+  },
+  SAVI: {
+    type: 'SAVI',
+    name: 'SAVI',
+    fullName: 'Soil-Adjusted Vegetation Index',
+    formula: '((NIR - Red) / (NIR + Red + 0.5)) * 1.5',
+    description: 'Calibrated for early crop stages where soil background reflection interferes with NDVI.',
+    optimalRange: '0.40 - 0.70',
+    palette: 'from-orange-500 via-amber-300 to-emerald-600',
+  },
+  NDWI: {
+    type: 'NDWI',
+    name: 'NDWI',
+    fullName: 'Normalized Difference Water Index',
+    formula: '(Green - NIR) / (Green + NIR)',
+    description: 'Quantifies canopy moisture content, plant hydration levels, and drought stress.',
+    optimalRange: '0.10 - 0.40',
+    palette: 'from-amber-500 via-cyan-400 to-blue-600',
+  },
+  NDRE: {
+    type: 'NDRE',
+    name: 'NDRE',
+    fullName: 'Normalized Difference Red Edge Index',
+    formula: '(NIR - RedEdge) / (NIR + RedEdge)',
+    description: 'Measures leaf chlorophyll concentration and precise nitrogen fertilizer demand.',
+    optimalRange: '0.35 - 0.65',
+    palette: 'from-rose-500 via-yellow-300 to-teal-500',
+  },
+};
+
