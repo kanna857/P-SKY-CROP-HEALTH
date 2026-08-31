@@ -3,7 +3,7 @@ import { DemoField, SPECTRAL_INDICES, SpectralIndexType } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Satellite, Droplets, Leaf, Activity, Sparkles, HelpCircle, Layers, Flame, Thermometer } from 'lucide-react';
+import { Satellite, Droplets, Leaf, Activity, Sparkles, HelpCircle, Layers } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface NDVIOverlayProps {
@@ -25,8 +25,6 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
         return Math.max(-0.2, Math.min(0.6, (base - 0.5) * 0.8 + 0.15));
       case 'NDRE':
         return Math.max(0.1, Math.min(0.8, base * 0.78));
-      case 'CWSI':
-        return Math.max(0.05, Math.min(0.85, (1.0 - base) * 0.85 + 0.1));
       case 'NDVI':
       default:
         return base;
@@ -42,12 +40,6 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
   };
 
   const getCellColor = (val: number, type: SpectralIndexType) => {
-    if (type === 'CWSI') {
-      if (val >= 0.6) return 'bg-rose-600 shadow-rose-600/50';
-      if (val >= 0.4) return 'bg-amber-500 shadow-amber-500/50';
-      if (val >= 0.2) return 'bg-yellow-300 shadow-yellow-300/50';
-      return 'bg-blue-600 shadow-blue-600/50';
-    }
     if (type === 'NDWI') {
       if (val >= 0.3) return 'bg-blue-500 shadow-blue-500/50';
       if (val >= 0.15) return 'bg-cyan-500 shadow-cyan-500/50';
@@ -74,9 +66,9 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
             </div>
             <div>
               <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                Multi-Spectral & Thermal Satellite Engine
+                Multi-Spectral Satellite Engine
                 <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">
-                  Sentinel-2 / Landsat 9 (TIR)
+                  Sentinel-2 / Landsat 9
                 </Badge>
               </h3>
               <p className="text-xs text-gray-400">Field: {field.name} • {field.area} ha</p>
@@ -95,7 +87,7 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
       {/* Multi-Spectral Index Tabs */}
       <div className="relative z-10">
         <Tabs value={selectedIndex} onValueChange={(v) => setSelectedIndex(v as SpectralIndexType)}>
-          <TabsList className="grid grid-cols-3 sm:grid-cols-6 bg-white/5 p-1 rounded-2xl border border-white/10">
+          <TabsList className="grid grid-cols-5 bg-white/5 p-1 rounded-2xl border border-white/10">
             <TabsTrigger value="NDVI" className="rounded-xl text-xs data-[state=active]:bg-emerald-500 data-[state=active]:text-white font-bold">
               NDVI
             </TabsTrigger>
@@ -110,9 +102,6 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
             </TabsTrigger>
             <TabsTrigger value="NDRE" className="rounded-xl text-xs data-[state=active]:bg-teal-500 data-[state=active]:text-white font-bold">
               NDRE
-            </TabsTrigger>
-            <TabsTrigger value="CWSI" className="rounded-xl text-xs data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-500 data-[state=active]:to-rose-500 data-[state=active]:text-black font-bold">
-              🔥 Thermal
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -167,14 +156,7 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
 
         {/* Dynamic Color Scale Legend */}
         <div className="flex items-center justify-between text-[10px] font-mono text-gray-400 pt-1">
-          {selectedIndex === 'CWSI' ? (
-            <>
-              <span className="text-blue-400 font-bold">❄️ 20°C Cool/Transpiring</span>
-              <span>26°C Optimal</span>
-              <span className="text-amber-400">32°C Water Deficit</span>
-              <span className="text-rose-500 font-bold">🔥 38°C Thermal Stress</span>
-            </>
-          ) : selectedIndex === 'NDWI' ? (
+          {selectedIndex === 'NDWI' ? (
             <>
               <span className="text-rose-400 font-bold">Low Moisture / Dry</span>
               <span>Moderate</span>

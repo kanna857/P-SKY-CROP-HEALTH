@@ -23,7 +23,6 @@ import {
   Scan,
   Calculator,
   Gauge,
-  Flame,
   CheckCircle2,
   ChevronRight,
   Eye,
@@ -31,12 +30,9 @@ import {
   Layers,
   HelpCircle,
   ShieldCheck,
-  Thermometer,
   Crosshair,
-  Radio,
-  Zap,
   Columns,
-  Square
+  Sparkle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -59,14 +55,6 @@ export interface PredictionCandidate {
   percentage: number;
 }
 
-export interface ThermalStats {
-  peak_intensity?: number;
-  mean_intensity?: number;
-  peak_x?: number;
-  peak_y?: number;
-  equiv_temp_c?: number;
-}
-
 export interface DiagnosisResult {
   plantName?: string;
   diseaseName?: string;
@@ -86,10 +74,6 @@ export interface DiagnosisResult {
   rawClass?: string;
   gradcamHeatmap?: string;
   gradcamOverlay?: string;
-  thermalIronbow?: string;
-  thermalJet?: string;
-  thermalInferno?: string;
-  thermalStats?: ThermalStats;
   lesionCount?: number;
   infectedAreaPct?: number;
   severityStage?: string;
@@ -106,7 +90,6 @@ interface CameraUploadProps {
 const BACKEND_URL = 'http://localhost:8000';
 
 type ScanStage = 'upload' | 'scanning' | 'detecting' | 'result';
-type ThermalPalette = 'flir' | 'jet' | 'inferno';
 type LayoutMode = 'side-by-side' | 'overlay';
 
 export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: CameraUploadProps) {
@@ -123,12 +106,10 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
   // Animated Confidence Display Counter
   const [displayConfidence, setDisplayConfidence] = useState(0);
 
-  // View Layout & Thermal Controls
+  // View Layout & Controls
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('side-by-side');
-  const [thermalPalette, setThermalPalette] = useState<ThermalPalette>('flir');
   const [overlayOpacity, setOverlayOpacity] = useState<number>(0.75);
   const [showLesionBoxes, setShowLesionBoxes] = useState<boolean>(true);
-  const [showThermalHotspots, setShowThermalHotspots] = useState<boolean>(true);
 
   // Dosage Calculator State
   const [tankLiters, setTankLiters] = useState<number>(15);
@@ -193,14 +174,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
 
       let result: DiagnosisResult;
 
-      const thermalStats: ThermalStats = data.thermal_stats || {
-        peak_intensity: 94.5,
-        mean_intensity: 48.2,
-        peak_x: 0.48,
-        peak_y: 0.42,
-        equiv_temp_c: 36.8
-      };
-
       if (diseaseInfo) {
         result = {
           plantName: diseaseInfo.plantName,
@@ -208,8 +181,8 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           scientificName: diseaseInfo.scientificName,
           healthStatus: diseaseInfo.isHealthy ? 'Healthy' : 'Diseased',
           overallDiagnosis: diseaseInfo.isHealthy
-            ? 'The plant foliage exhibits optimal cellular chlorophyll and cool thermal signature.'
-            : `High thermal attention & necrosis detected for ${diseaseInfo.diseaseName}.`,
+            ? 'The plant foliage exhibits optimal cellular chlorophyll and healthy vigor.'
+            : `High neural attention & foliar lesions detected for ${diseaseInfo.diseaseName}.`,
           severityScore: diseaseInfo.severity === 'High' ? 8 : diseaseInfo.severity === 'Medium' ? 5 : 2,
           treatment: diseaseInfo.treatment,
           recommendations: diseaseInfo.recommendations,
@@ -219,10 +192,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           topPredictions: data.top_predictions || [],
           gradcamHeatmap: data.gradcam_heatmap || data.thermal_ironbow,
           gradcamOverlay: data.gradcam_overlay,
-          thermalIronbow: data.thermal_ironbow || data.gradcam_heatmap,
-          thermalJet: data.thermal_jet,
-          thermalInferno: data.thermal_inferno,
-          thermalStats,
           lesionCount: data.lesion_count ?? 0,
           infectedAreaPct: data.infected_area_pct ?? 0.0,
           severityStage: data.severity_stage ?? (diseaseInfo.isHealthy ? 'Stage 0 (Healthy)' : 'Stage 2 (Moderate Spread)'),
@@ -231,7 +200,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           diseases: !diseaseInfo.isHealthy ? [{
             name: diseaseInfo.diseaseName,
             confidence: `${(data.confidence * 100).toFixed(1)}%`,
-            description: 'Detected using PyTorch MobileNetV3 with Radiometric Thermal Activation Mapping.'
+            description: 'Detected using PyTorch MobileNetV3 with Grad-CAM neural attention mapping.'
           }] : [],
         };
       } else {
@@ -252,19 +221,15 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           plantName,
           diseaseName: diseasePart,
           healthStatus: isHealthy ? 'Healthy' : 'Diseased',
-          overallDiagnosis: isHealthy ? 'The plant appears healthy with normal foliar heat signature.' : `High likelihood of ${diseasePart}.`,
+          overallDiagnosis: isHealthy ? 'The plant appears healthy with normal foliage.' : `High likelihood of ${diseasePart}.`,
           severityScore: data.severity === 'High' ? 8 : data.severity === 'Medium' ? 5 : 2,
           recommendations: [data.recommendation || 'Consult local agricultural extension.', 'Monitor crop daily for changes.'],
           preventiveMeasures: ['Ensure proper spacing for air circulation.', 'Avoid overhead watering.'],
           rawConfidence: data.confidence,
           rawClass: classKey,
           topPredictions: data.top_predictions || [],
-          gradcamHeatmap: data.gradcam_heatmap || data.thermal_ironbow,
+          gradcamHeatmap: data.gradcam_heatmap,
           gradcamOverlay: data.gradcam_overlay,
-          thermalIronbow: data.thermal_ironbow || data.gradcam_heatmap,
-          thermalJet: data.thermal_jet,
-          thermalInferno: data.thermal_inferno,
-          thermalStats,
           lesionCount: data.lesion_count ?? 0,
           infectedAreaPct: data.infected_area_pct ?? 0.0,
           severityStage: data.severity_stage ?? (isHealthy ? 'Stage 0 (Healthy)' : 'Stage 2 (Moderate Spread)'),
@@ -273,7 +238,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           diseases: !isHealthy ? [{
             name: diseasePart,
             confidence: `${(data.confidence * 100).toFixed(1)}%`,
-            description: 'Detected using PyTorch MobileNetV3 with Radiometric Thermal Activation Mapping.'
+            description: 'Detected using PyTorch MobileNetV3 with Grad-CAM neural attention mapping.'
           }] : [],
         };
       }
@@ -294,7 +259,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
       }, 20);
 
       toast({
-        title: result.isOfflineEdge ? 'Edge AI Radiometric Scan (Offline) 📴' : 'Thermal Heatmap Scan Complete! 🔥',
+        title: result.isOfflineEdge ? 'Edge AI Diagnosis Complete (Offline) 📴' : 'Diagnosis & Grad-CAM Complete! 🌿',
         description: `Identified ${result.plantName} with ${(data.confidence * 100).toFixed(1)}% confidence.`,
       });
     } catch (err: unknown) {
@@ -414,21 +379,12 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
     recommendations: diagnosis.recommendations || ['Follow standard organic fungicide spray.'],
     preventiveMeasures: diagnosis.preventiveMeasures || ['Ensure proper soil aeration and canopy spacing.'],
     imagePreview: preview,
-    gradcamOverlay: diagnosis.thermalIronbow || diagnosis.gradcamOverlay,
+    gradcamOverlay: diagnosis.gradcamOverlay,
     lesionCount: diagnosis.lesionCount,
     infectedAreaPct: diagnosis.infectedAreaPct,
     severityStage: diagnosis.severityStage,
     fieldName: fieldName || 'Main Field Block',
   } : null;
-
-  // Active Thermal Layer Source
-  const getActiveThermalSource = () => {
-    if (!diagnosis) return preview;
-    if (thermalPalette === 'flir') return diagnosis.thermalIronbow || diagnosis.gradcamHeatmap;
-    if (thermalPalette === 'jet') return diagnosis.thermalJet || diagnosis.gradcamHeatmap;
-    if (thermalPalette === 'inferno') return diagnosis.thermalInferno || diagnosis.gradcamHeatmap;
-    return diagnosis.thermalIronbow || diagnosis.gradcamHeatmap;
-  };
 
   return (
     <>
@@ -436,19 +392,19 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
         {/* Card Header with Status & Stage Flow Indicators */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-orange-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-              <Thermometer className="w-5 h-5 animate-pulse" />
+            <div className="p-2.5 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+              <Scan className="w-5 h-5 animate-pulse" />
             </div>
             <div>
               <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
-                Side-by-Side Foliage & Thermal Heat Studio
+                AI Leaf Scanner & Grad-CAM Studio
                 {backendOnline === false ? (
                   <Badge className="bg-amber-500/20 text-amber-400 border-amber-400/40 text-[10px] gap-1">
                     <WifiOff className="w-3 h-3" /> Offline Edge
                   </Badge>
                 ) : (
                   <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-400/40 text-[10px] gap-1">
-                    <Zap className="w-3 h-3 text-emerald-400" /> Thermal ML Online
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" /> ML Online
                   </Badge>
                 )}
               </h3>
@@ -461,7 +417,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             <ChevronRight className="w-3 h-3 text-gray-600" />
             <span className={scanStage === 'scanning' ? 'text-emerald-400 font-extrabold animate-pulse' : 'text-gray-400'}>SCAN</span>
             <ChevronRight className="w-3 h-3 text-gray-600" />
-            <span className={scanStage === 'detecting' ? 'text-emerald-400 font-extrabold animate-pulse' : 'text-gray-400'}>THERMAL AI</span>
+            <span className={scanStage === 'detecting' ? 'text-emerald-400 font-extrabold animate-pulse' : 'text-gray-400'}>GRAD-CAM</span>
             <ChevronRight className="w-3 h-3 text-gray-600" />
             <span className={scanStage === 'result' ? 'text-emerald-400 font-extrabold' : 'text-gray-400'}>DIAGNOSIS</span>
           </div>
@@ -498,7 +454,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           </div>
         ) : (
           <div className="space-y-3">
-            {/* SIDE-BY-SIDE DUAL VIEW: Left Original Leaf + Right Radiometric Thermal Heatmap */}
+            {/* SIDE-BY-SIDE DUAL VIEW: Left Original Leaf + Right Grad-CAM Attention Heatmap */}
             {layoutMode === 'side-by-side' && diagnosis ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 relative">
                 {/* Left Panel: Original Leaf Image with Optional Bounding Boxes */}
@@ -525,7 +481,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                           }}
                         >
                           <span className="absolute -top-4 left-0 text-[8px] bg-red-600 text-white font-mono px-1 py-0.2 rounded shadow-md">
-                            #{bIdx + 1}
+                            Lesion #{bIdx + 1}
                           </span>
                         </div>
                       ))}
@@ -533,37 +489,18 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                   )}
                 </div>
 
-                {/* Right Panel: Radiometric Thermal Heatmap Image with Hotspot Reticle */}
-                <div className="relative rounded-2xl overflow-hidden border border-amber-500/30 shadow-2xl bg-black/80 aspect-video flex items-center justify-center group select-none">
-                  <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 bg-black/80 px-2.5 py-1 rounded-xl border border-amber-500/30">
-                    <Thermometer className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Thermal Heatmap</span>
+                {/* Right Panel: Grad-CAM Neural Attention Heatmap */}
+                <div className="relative rounded-2xl overflow-hidden border border-emerald-500/30 shadow-2xl bg-black/80 aspect-video flex items-center justify-center group select-none">
+                  <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 bg-black/80 px-2.5 py-1 rounded-xl border border-emerald-500/30">
+                    <Sparkle className="w-3.5 h-3.5 text-emerald-400 animate-spin" style={{ animationDuration: '8s' }} />
+                    <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">Grad-CAM Attention Map</span>
                   </div>
 
                   <img
-                    src={getActiveThermalSource() || preview}
-                    alt="Thermal Heatmap"
+                    src={diagnosis.gradcamOverlay || diagnosis.gradcamHeatmap || preview}
+                    alt="Grad-CAM Attention Map"
                     className="w-full h-full object-contain"
                   />
-
-                  {/* Pulsing Thermal Peak Hotspot Reticle */}
-                  {showThermalHotspots && diagnosis.thermalStats?.peak_x !== undefined && diagnosis.healthStatus !== 'Healthy' && (
-                    <div
-                      className="absolute pointer-events-none -translate-x-1/2 -translate-y-1/2"
-                      style={{
-                        left: `${(diagnosis.thermalStats.peak_x || 0.5) * 100}%`,
-                        top: `${(diagnosis.thermalStats.peak_y || 0.45) * 100}%`,
-                      }}
-                    >
-                      <div className="w-10 h-10 rounded-full border-2 border-red-500/80 animate-ping absolute -inset-1.5" />
-                      <div className="w-7 h-7 rounded-full border-2 border-amber-400 bg-red-500/40 flex items-center justify-center shadow-[0_0_15px_rgba(239,68,68,1)]">
-                        <Crosshair className="w-3.5 h-3.5 text-white animate-spin" style={{ animationDuration: '10s' }} />
-                      </div>
-                      <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-black/90 text-amber-300 font-mono text-[8px] font-bold px-1.5 py-0.5 rounded-full border border-amber-500/40 whitespace-nowrap shadow-lg">
-                        🔥 Peak: {diagnosis.thermalStats.peak_intensity}% ({diagnosis.thermalStats.equiv_temp_c}°C)
-                      </span>
-                    </div>
-                  )}
 
                   {/* Clear Button */}
                   <Button
@@ -587,8 +524,8 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                     style={{ opacity: overlayOpacity }}
                   >
                     <img
-                      src={getActiveThermalSource() || preview}
-                      alt="Thermal Overlay"
+                      src={diagnosis.gradcamOverlay || diagnosis.gradcamHeatmap || preview}
+                      alt="Grad-CAM Overlay"
                       className="w-full h-full object-contain"
                     />
                   </div>
@@ -603,7 +540,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                     </div>
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                       <span className="px-4 py-2 rounded-2xl bg-black/85 text-emerald-400 text-xs font-mono font-bold tracking-wider animate-pulse border border-emerald-500/40 shadow-2xl">
-                        {scanStage === 'scanning' ? '🌿 EXTRACTING FOLIAR FEATURES...' : '🔥 COMPUTING RADIOMETRIC THERMAL GRAD-CAM...'}
+                        {scanStage === 'scanning' ? '🌿 EXTRACTING FOLIAR FEATURES...' : '🔬 COMPUTING GRAD-CAM ATTENTION MAP...'}
                       </span>
                     </div>
                   </div>
@@ -620,141 +557,69 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
               </div>
             )}
 
-            {/* Thermal Palette & Display Mode Toolbar (when diagnosed) */}
+            {/* Display Mode Toolbar (when diagnosed) */}
             {diagnosis && (
-              <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 space-y-2.5">
-                <div className="flex flex-col lg:flex-row items-center justify-between gap-3 text-xs">
-                  {/* Layout View Switcher: Side-by-Side vs Overlay */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-400 font-medium flex items-center gap-1 text-[11px]">
-                      <Columns className="w-3.5 h-3.5 text-emerald-400" /> View:
-                    </span>
-                    <div className="flex bg-black/60 p-0.5 rounded-xl border border-white/10">
-                      <button
-                        onClick={() => setLayoutMode('side-by-side')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          layoutMode === 'side-by-side'
-                            ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
-                            : 'text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        👥 Side-by-Side Dual
-                      </button>
-                      <button
-                        onClick={() => setLayoutMode('overlay')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          layoutMode === 'overlay'
-                            ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
-                            : 'text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        🔲 Single Overlay
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Thermal Colormap Switcher */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-400 font-medium flex items-center gap-1 text-[11px]">
-                      <Thermometer className="w-3.5 h-3.5 text-amber-400" /> Thermal:
-                    </span>
-                    <div className="flex bg-black/60 p-0.5 rounded-xl border border-white/10">
-                      <button
-                        onClick={() => setThermalPalette('flir')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          thermalPalette === 'flir'
-                            ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-md'
-                            : 'text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        🔥 FLIR Ironbow
-                      </button>
-                      <button
-                        onClick={() => setThermalPalette('jet')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          thermalPalette === 'jet'
-                            ? 'bg-gradient-to-r from-cyan-500 to-emerald-400 text-black shadow-md'
-                            : 'text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        🌈 JET Heat
-                      </button>
-                      <button
-                        onClick={() => setThermalPalette('inferno')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          thermalPalette === 'inferno'
-                            ? 'bg-gradient-to-r from-rose-500 to-amber-400 text-black shadow-md'
-                            : 'text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        ⚡ Hot Metal
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Single Overlay Opacity Slider */}
-                  {layoutMode === 'overlay' && (
-                    <div className="flex items-center gap-2 w-full sm:w-40">
-                      <span className="text-[10px] text-gray-400 whitespace-nowrap">Alpha:</span>
-                      <Slider
-                        value={[overlayOpacity * 100]}
-                        onValueChange={(val) => setOverlayOpacity(val[0] / 100)}
-                        max={100}
-                        min={10}
-                        step={5}
-                        className="w-full"
-                      />
-                      <span className="text-[10px] text-emerald-400 font-mono font-bold whitespace-nowrap">
-                        {Math.round(overlayOpacity * 100)}%
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Hotspot & BBox Toggles */}
-                  <div className="flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                {/* Layout Switcher: Side-by-Side vs Overlay */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-400 font-medium flex items-center gap-1 text-[11px]">
+                    <Columns className="w-3.5 h-3.5 text-emerald-400" /> View:
+                  </span>
+                  <div className="flex bg-black/60 p-0.5 rounded-xl border border-white/10">
                     <button
-                      onClick={() => setShowThermalHotspots(!showThermalHotspots)}
-                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all ${
-                        showThermalHotspots
-                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
-                          : 'bg-white/5 text-gray-400 border-white/10'
+                      onClick={() => setLayoutMode('side-by-side')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                        layoutMode === 'side-by-side'
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
+                          : 'text-gray-400 hover:text-white'
                       }`}
                     >
-                      {showThermalHotspots ? '🎯 Hotspot ON' : '🎯 Hotspot OFF'}
+                      👥 Side-by-Side (Original + Grad-CAM)
                     </button>
-
-                    {diagnosis.healthStatus !== 'Healthy' && (
-                      <button
-                        onClick={() => setShowLesionBoxes(!showLesionBoxes)}
-                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all ${
-                          showLesionBoxes
-                            ? 'bg-red-500/20 text-red-400 border-red-500/40 shadow-sm'
-                            : 'bg-white/5 text-gray-400 border-white/10'
-                        }`}
-                      >
-                        {showLesionBoxes ? 'BBoxes ON' : 'BBoxes OFF'}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setLayoutMode('overlay')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                        layoutMode === 'overlay'
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      🔲 Single Overlay
+                    </button>
                   </div>
                 </div>
 
-                {/* Radiometric Thermal Calibration Scale Bar */}
-                <div className="pt-2 border-t border-white/10 space-y-1">
-                  <div className="h-2 rounded-full overflow-hidden flex bg-black/60 shadow-inner">
-                    <div className="flex-1 bg-indigo-900" />
-                    <div className="flex-1 bg-purple-700" />
-                    <div className="flex-1 bg-rose-600" />
-                    <div className="flex-1 bg-amber-500" />
-                    <div className="flex-1 bg-yellow-300" />
-                    <div className="flex-1 bg-white" />
+                {/* Single Overlay Opacity Slider */}
+                {layoutMode === 'overlay' && (
+                  <div className="flex items-center gap-2 w-full sm:w-44">
+                    <span className="text-[10px] text-gray-400 whitespace-nowrap">Alpha:</span>
+                    <Slider
+                      value={[overlayOpacity * 100]}
+                      onValueChange={(val) => setOverlayOpacity(val[0] / 100)}
+                      max={100}
+                      min={10}
+                      step={5}
+                      className="w-full"
+                    />
+                    <span className="text-[10px] text-emerald-400 font-mono font-bold whitespace-nowrap">
+                      {Math.round(overlayOpacity * 100)}%
+                    </span>
                   </div>
-                  <div className="flex justify-between text-[9px] font-mono text-gray-400">
-                    <span className="text-blue-400">❄️ 20°C (Cold/Healthy Foliage)</span>
-                    <span>26°C</span>
-                    <span className="text-amber-400">32°C (Chlorotic Stress)</span>
-                    <span className="text-red-400 font-bold">🔥 38.5°C (Necrotic Hotspot)</span>
-                  </div>
-                </div>
+                )}
+
+                {/* Toggle Lesion Bounding Boxes */}
+                {diagnosis.healthStatus !== 'Healthy' && (
+                  <button
+                    onClick={() => setShowLesionBoxes(!showLesionBoxes)}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all ${
+                      showLesionBoxes
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40 shadow-sm'
+                        : 'bg-white/5 text-gray-400 border-white/10'
+                    }`}
+                  >
+                    {showLesionBoxes ? 'Lesion BBoxes ON' : 'Lesion BBoxes OFF'}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -789,12 +654,12 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             {isAnalyzing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Computing Side-by-Side Radiometric Thermal Heatmaps...
+                Computing Deep Neural Diagnosis & Grad-CAM Attention Map...
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4 mr-2" />
-                Run Side-by-Side Foliage & Thermal Heat Diagnosis
+                Run AI Disease Diagnosis & Grad-CAM
               </>
             )}
           </Button>
@@ -859,9 +724,9 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                 </div>
               </div>
 
-              {/* Thermal Heat & Lesion KPI Row */}
+              {/* Lesion Area & Severity Stage KPI Row */}
               {diagnosis.healthStatus !== 'Healthy' && (
-                <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-white/10 text-center">
+                <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-white/10 text-center">
                   <div className="p-2 rounded-xl bg-black/40 border border-white/5">
                     <span className="text-[10px] text-gray-400 block">Lesion Count</span>
                     <span className="text-sm font-bold text-red-400 font-mono">
@@ -872,12 +737,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                     <span className="text-[10px] text-gray-400 block">Infected Area</span>
                     <span className="text-sm font-bold text-orange-400 font-mono">
                       {diagnosis.infectedAreaPct || 0}%
-                    </span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-black/40 border border-white/5">
-                    <span className="text-[10px] text-gray-400 block">Thermal Peak</span>
-                    <span className="text-sm font-bold text-amber-400 font-mono">
-                      {diagnosis.thermalStats?.peak_intensity || 94.5}%
                     </span>
                   </div>
                   <div className="p-2 rounded-xl bg-black/40 border border-white/5">
