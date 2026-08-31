@@ -100,9 +100,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
   // Animated Confidence Display Counter
   const [displayConfidence, setDisplayConfidence] = useState(0);
 
-  // Controls
-  const [showLesionBoxes, setShowLesionBoxes] = useState<boolean>(true);
-
   // Dosage Calculator State
   const [tankLiters, setTankLiters] = useState<number>(15);
 
@@ -441,31 +438,9 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           </div>
         ) : (
           <div className="space-y-3">
-            {/* Visual Leaf Image Viewer with Optional Lesion Bounding Boxes */}
+            {/* Clean Visual Leaf Image Viewer */}
             <div className="relative rounded-2xl overflow-hidden border border-white/15 shadow-2xl bg-black/80 aspect-video max-h-96 flex items-center justify-center group select-none">
               <img src={preview} alt="Scanned Foliage" className="w-full h-full object-contain" />
-
-              {/* Lesion Bounding Boxes */}
-              {diagnosis && showLesionBoxes && diagnosis.lesionBoxes && diagnosis.lesionBoxes.length > 0 && diagnosis.healthStatus !== 'Healthy' && (
-                <div className="absolute inset-0 pointer-events-none">
-                  {diagnosis.lesionBoxes.map((box, bIdx) => (
-                    <div
-                      key={bIdx}
-                      className="absolute border-2 border-red-500/90 rounded-lg bg-red-500/10 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"
-                      style={{
-                        top: `${box.ymin * 100}%`,
-                        left: `${box.xmin * 100}%`,
-                        width: `${(box.xmax - box.xmin) * 100}%`,
-                        height: `${(box.ymax - box.ymin) * 100}%`,
-                      }}
-                    >
-                      <span className="absolute -top-4 left-0 text-[8px] bg-red-600 text-white font-mono px-1.5 py-0.2 rounded shadow-md">
-                        Lesion #{bIdx + 1}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {/* Laser Scanning Animation */}
               {isAnalyzing && (
@@ -491,22 +466,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                 <X className="w-4 h-4" />
               </Button>
             </div>
-
-            {/* Toggle Bounding Boxes (when diagnosed) */}
-            {diagnosis && diagnosis.healthStatus !== 'Healthy' && diagnosis.lesionBoxes && diagnosis.lesionBoxes.length > 0 && (
-              <div className="flex justify-end pt-1">
-                <button
-                  onClick={() => setShowLesionBoxes(!showLesionBoxes)}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all ${
-                    showLesionBoxes
-                      ? 'bg-red-500/20 text-red-400 border-red-500/40 shadow-sm'
-                      : 'bg-white/5 text-gray-400 border-white/10'
-                  }`}
-                >
-                  {showLesionBoxes ? '🎯 Lesion BBoxes Visible' : '🎯 Show Lesion BBoxes'}
-                </button>
-              </div>
-            )}
           </div>
         )}
 
