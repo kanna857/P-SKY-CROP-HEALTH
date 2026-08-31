@@ -13,6 +13,7 @@ import AboutPage from "./pages/AboutPage";
 import AuthPage from "./pages/AuthPage";
 import DiagnosePage from "./pages/DiagnosePage";
 import ChatbotPage from "./pages/ChatbotPage";
+import HistoryPage from "./pages/HistoryPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/compare" element={<CompareFieldsPage />} />
             <Route path="/chatbot" element={<ChatbotPage />} />
+            <Route path="/history" element={<HistoryPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/auth" element={<AuthPage />} />
             {/* Catch-all route */}

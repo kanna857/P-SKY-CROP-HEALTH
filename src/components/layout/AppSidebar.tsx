@@ -34,14 +34,12 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Home', icon: Home, color: 'text-emerald-400' },
-  { href: '/diagnose', label: 'AI Disease Scanner', icon: Scan, color: 'text-amber-400', badge: 'Grad-CAM' },
+  { href: '/diagnose', label: 'AI Disease Scanner', icon: Scan, color: 'text-amber-400', badge: '38 Crops' },
   { href: '/analyze', label: 'Satellite Multi-Index', icon: Satellite, color: 'text-cyan-400', badge: '5 Bands' },
   { href: '/dashboard', label: 'Farm Dashboard', icon: LayoutDashboard, color: 'text-violet-400' },
   { href: '/compare', label: 'Compare Fields', icon: BarChart2, color: 'text-pink-400' },
   { href: '/chatbot', label: 'AI Agronomist Voice', icon: Bot, color: 'text-teal-400', badge: '8 Langs' },
-  { href: '/diagnose#prescriptions', label: 'Rx Prescriptions', icon: FileText, color: 'text-blue-400' },
-  { href: '/diagnose#radar', label: 'Epidemiology Radar', icon: CloudSun, color: 'text-orange-400' },
-  { href: '/analyze#history', label: 'Field History', icon: History, color: 'text-indigo-400' },
+  { href: '/history', label: 'Field History', icon: History, color: 'text-indigo-400', badge: 'Search' },
   { href: '/about', label: 'Settings & Model', icon: Settings, color: 'text-gray-400' },
 ];
 
