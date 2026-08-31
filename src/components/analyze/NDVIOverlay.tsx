@@ -3,7 +3,7 @@ import { DemoField, SPECTRAL_INDICES, SpectralIndexType } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Satellite, Droplets, Leaf, Activity, Sparkles, HelpCircle, Layers, Flame } from 'lucide-react';
+import { Satellite, Droplets, Leaf, Activity, Sparkles, HelpCircle, Layers, Flame, Thermometer } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface NDVIOverlayProps {
@@ -25,6 +25,8 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
         return Math.max(-0.2, Math.min(0.6, (base - 0.5) * 0.8 + 0.15));
       case 'NDRE':
         return Math.max(0.1, Math.min(0.8, base * 0.78));
+      case 'CWSI':
+        return Math.max(0.05, Math.min(0.85, (1.0 - base) * 0.85 + 0.1));
       case 'NDVI':
       default:
         return base;
@@ -40,6 +42,12 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
   };
 
   const getCellColor = (val: number, type: SpectralIndexType) => {
+    if (type === 'CWSI') {
+      if (val >= 0.6) return 'bg-rose-600 shadow-rose-600/50';
+      if (val >= 0.4) return 'bg-amber-500 shadow-amber-500/50';
+      if (val >= 0.2) return 'bg-yellow-300 shadow-yellow-300/50';
+      return 'bg-blue-600 shadow-blue-600/50';
+    }
     if (type === 'NDWI') {
       if (val >= 0.3) return 'bg-blue-500 shadow-blue-500/50';
       if (val >= 0.15) return 'bg-cyan-500 shadow-cyan-500/50';
@@ -66,9 +74,9 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
             </div>
             <div>
               <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                Multi-Spectral Satellite Engine
+                Multi-Spectral & Thermal Satellite Engine
                 <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">
-                  Sentinel-2 / Landsat 9
+                  Sentinel-2 / Landsat 9 (TIR)
                 </Badge>
               </h3>
               <p className="text-xs text-gray-400">Field: {field.name} • {field.area} ha</p>
@@ -87,70 +95,102 @@ export function NDVIOverlay({ field }: NDVIOverlayProps) {
       {/* Multi-Spectral Index Tabs */}
       <div className="relative z-10">
         <Tabs value={selectedIndex} onValueChange={(v) => setSelectedIndex(v as SpectralIndexType)}>
-          <TabsList className="grid grid-cols-5 bg-white/5 p-1 rounded-2xl border border-white/10">
-            <TabsTrigger value="NDVI" className="rounded-xl text-xs data-[state=active]:bg-emerald-500 data-[state=active]:text-white">
+          <TabsList className="grid grid-cols-3 sm:grid-cols-6 bg-white/5 p-1 rounded-2xl border border-white/10">
+            <TabsTrigger value="NDVI" className="rounded-xl text-xs data-[state=active]:bg-emerald-500 data-[state=active]:text-white font-bold">
               NDVI
             </TabsTrigger>
-            <TabsTrigger value="EVI" className="rounded-xl text-xs data-[state=active]:bg-lime-500 data-[state=active]:text-slate-900 font-semibold">
+            <TabsTrigger value="EVI" className="rounded-xl text-xs data-[state=active]:bg-lime-500 data-[state=active]:text-slate-900 font-bold">
               EVI
             </TabsTrigger>
-            <TabsTrigger value="SAVI" className="rounded-xl text-xs data-[state=active]:bg-amber-500 data-[state=active]:text-slate-900 font-semibold">
+            <TabsTrigger value="SAVI" className="rounded-xl text-xs data-[state=active]:bg-amber-500 data-[state=active]:text-slate-900 font-bold">
               SAVI
             </TabsTrigger>
-            <TabsTrigger value="NDWI" className="rounded-xl text-xs data-[state=active]:bg-blue-500 data-[state=active]:text-white">
+            <TabsTrigger value="NDWI" className="rounded-xl text-xs data-[state=active]:bg-blue-500 data-[state=active]:text-white font-bold">
               NDWI
             </TabsTrigger>
-            <TabsTrigger value="NDRE" className="rounded-xl text-xs data-[state=active]:bg-teal-500 data-[state=active]:text-white">
+            <TabsTrigger value="NDRE" className="rounded-xl text-xs data-[state=active]:bg-teal-500 data-[state=active]:text-white font-bold">
               NDRE
+            </TabsTrigger>
+            <TabsTrigger value="CWSI" className="rounded-xl text-xs data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-500 data-[state=active]:to-rose-500 data-[state=active]:text-black font-bold">
+              🔥 Thermal
             </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
       {/* Formula & Explanation Card */}
-      <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5 relative z-10">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-white">{indexInfo.fullName}</span>
-          <code className="px-2 py-0.5 rounded bg-black/40 text-emerald-400 font-mono text-[11px] border border-white/5">
-            {indexInfo.formula}
-          </code>
-        </div>
-        <p className="text-xs text-gray-400">{indexInfo.description}</p>
-        <div className="flex items-center gap-2 pt-1 text-[11px]">
-          <span className="text-gray-400">Target Range:</span>
-          <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-[10px]">
-            {indexInfo.optimalRange}
-          </Badge>
-        </div>
-      </div>
+      {indexInfo && (
+        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2 relative z-10">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-emerald-400" />
+              {indexInfo.fullName}
+            </span>
+            <span className="text-[11px] font-mono bg-black/40 px-2.5 py-0.5 rounded-lg border border-white/10 text-emerald-400">
+              Optimal: {indexInfo.optimalRange}
+            </span>
+          </div>
 
-      {/* 10x10 High-Density Synthetic Spectral Matrix Map */}
-      <div className="aspect-square max-w-sm mx-auto rounded-2xl overflow-hidden border border-white/15 p-2 bg-black/40 relative z-10 shadow-inner">
-        <div
-          className="grid gap-1 h-full w-full"
-          style={{ gridTemplateColumns: `repeat(${gridSize}, 1fr)` }}
-        >
-          {Array.from({ length: gridSize * gridSize }).map((_, i) => {
+          <p className="text-xs text-gray-300 leading-relaxed">{indexInfo.description}</p>
+
+          <div className="p-2 rounded-xl bg-black/40 border border-white/5 text-[11px] font-mono text-gray-300 flex items-center justify-between">
+            <span className="text-gray-400">Waveband Formula:</span>
+            <code className="text-emerald-400 font-bold">{indexInfo.formula}</code>
+          </div>
+        </div>
+      )}
+
+      {/* 10x10 Multi-Spectral Simulated Grid Sensor Map */}
+      <div className="space-y-3 relative z-10">
+        <div className="flex items-center justify-between text-xs text-gray-300">
+          <span className="font-bold flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-emerald-400" /> 10m Pixel Multi-Spectral Radiance Grid
+          </span>
+          <span className="text-[10px] text-gray-400 font-mono">100 High-Res Cells</span>
+        </div>
+
+        <div className="grid grid-cols-10 gap-1.5 p-3 rounded-2xl bg-black/40 border border-white/10 aspect-video max-h-60 overflow-hidden">
+          {Array.from({ length: 100 }).map((_, i) => {
             const cellVal = generateCell(currentValue);
             return (
               <div
                 key={i}
-                className={`${getCellColor(cellVal, selectedIndex)} rounded-md transition-all duration-300 hover:scale-125 hover:z-20 cursor-pointer shadow-sm`}
-                title={`${selectedIndex}: ${cellVal.toFixed(3)}`}
+                className={`rounded-md transition-all duration-300 hover:scale-125 cursor-pointer hover:z-20 ${getCellColor(
+                  cellVal,
+                  selectedIndex
+                )}`}
+                title={`Pixel #${i + 1}: ${selectedIndex} ${cellVal.toFixed(3)}`}
               />
             );
           })}
         </div>
-      </div>
 
-      {/* Continuous Spectral Ramp Legend */}
-      <div className="space-y-2 relative z-10">
-        <div className="flex justify-between text-[11px] text-gray-400 font-medium">
-          <span>Stressed / Low</span>
-          <span>Moderate</span>
-          <span>Optimal / High</span>
+        {/* Dynamic Color Scale Legend */}
+        <div className="flex items-center justify-between text-[10px] font-mono text-gray-400 pt-1">
+          {selectedIndex === 'CWSI' ? (
+            <>
+              <span className="text-blue-400 font-bold">❄️ 20°C Cool/Transpiring</span>
+              <span>26°C Optimal</span>
+              <span className="text-amber-400">32°C Water Deficit</span>
+              <span className="text-rose-500 font-bold">🔥 38°C Thermal Stress</span>
+            </>
+          ) : selectedIndex === 'NDWI' ? (
+            <>
+              <span className="text-rose-400 font-bold">Low Moisture / Dry</span>
+              <span>Moderate</span>
+              <span className="text-cyan-400">Adequate</span>
+              <span className="text-blue-400 font-bold">High Hydration</span>
+            </>
+          ) : (
+            <>
+              <span className="text-red-400 font-bold">0.0 (Stress / Bare)</span>
+              <span>0.25</span>
+              <span className="text-yellow-400 font-bold">0.50 (Moderate)</span>
+              <span>0.75</span>
+              <span className="text-emerald-400 font-bold">1.0 (Peak Biomass)</span>
+            </>
+          )}
         </div>
-        <div className={`h-2.5 rounded-full bg-gradient-to-r ${indexInfo.palette} shadow-inner`} />
       </div>
     </div>
   );

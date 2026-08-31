@@ -305,5 +305,14 @@ export const SPECTRAL_INDICES: Record<SpectralIndexType, SpectralIndexInfo> = {
     optimalRange: '0.35 - 0.65',
     palette: 'from-rose-500 via-yellow-300 to-teal-500',
   },
+  CWSI: {
+    type: 'CWSI',
+    name: 'CWSI / Thermal',
+    fullName: 'Canopy Thermal & Water Stress Index',
+    formula: '(T_canopy - T_min) / (T_max - T_min) [TIR Radiometry]',
+    description: 'Measures leaf transpirational cooling, foliar drought stress, and canopy surface heat.',
+    optimalRange: '0.10 - 0.35',
+    palette: 'from-blue-600 via-yellow-400 to-rose-600',
+  },
 };
 
