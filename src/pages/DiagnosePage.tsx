@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { CameraUpload } from '@/components/analyze/CameraUpload';
 import { DiseaseRiskWidget } from '@/components/analyze/DiseaseRiskWidget';
-import { LeafScanner3D } from '@/components/3d/LeafScanner3D';
 import { 
   Sparkles, 
   Leaf, 
@@ -12,7 +11,8 @@ import {
   Crosshair,
   Filter,
   CheckCircle2,
-  Box
+  Layers,
+  Award
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,7 +37,7 @@ const SAMPLE_LEAVES: SampleLeaf[] = [
     disease: 'Alternaria solani',
     imageSrc: '/samples/tomato_early_blight.jpg',
     tag: 'Fungal Infection',
-    badgeBg: 'bg-red-500 text-white'
+    badgeBg: 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
   },
   {
     id: 'apple-scab',
@@ -47,7 +47,7 @@ const SAMPLE_LEAVES: SampleLeaf[] = [
     disease: 'Venturia inaequalis',
     imageSrc: '/samples/apple_scab.jpg',
     tag: 'Leaf Lesions',
-    badgeBg: 'bg-emerald-600 text-white'
+    badgeBg: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
   },
   {
     id: 'corn-rust',
@@ -56,8 +56,8 @@ const SAMPLE_LEAVES: SampleLeaf[] = [
     category: 'cereals',
     disease: 'Puccinia sorghi',
     imageSrc: '/samples/corn_rust.jpg',
-    tag: 'Puccinia',
-    badgeBg: 'bg-yellow-600 text-white'
+    tag: 'Puccinia Fungus',
+    badgeBg: 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
   },
   {
     id: 'grape-black-rot',
@@ -67,7 +67,7 @@ const SAMPLE_LEAVES: SampleLeaf[] = [
     disease: 'Guignardia bidwellii',
     imageSrc: '/samples/grape_black_rot.jpg',
     tag: 'Necrotic Rot',
-    badgeBg: 'bg-red-600 text-white'
+    badgeBg: 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
   },
   {
     id: 'pepper-bacterial-spot',
@@ -77,7 +77,7 @@ const SAMPLE_LEAVES: SampleLeaf[] = [
     disease: 'Xanthomonas campestris',
     imageSrc: '/samples/pepper_bacterial_spot.jpg',
     tag: 'Bacterial Spot',
-    badgeBg: 'bg-red-500 text-white'
+    badgeBg: 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
   },
   {
     id: 'potato-healthy',
@@ -87,7 +87,7 @@ const SAMPLE_LEAVES: SampleLeaf[] = [
     disease: 'None (Healthy)',
     imageSrc: '/samples/potato_healthy.jpg',
     tag: '100% Healthy',
-    badgeBg: 'bg-emerald-500 text-white'
+    badgeBg: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
   },
   {
     id: 'rice-blast',
@@ -96,8 +96,8 @@ const SAMPLE_LEAVES: SampleLeaf[] = [
     category: 'cereals',
     disease: 'Magnaporthe oryzae',
     imageSrc: '/samples/rice_blast.jpg',
-    tag: 'Fungal Disease',
-    badgeBg: 'bg-yellow-500 text-white'
+    tag: 'Fungal Blast',
+    badgeBg: 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
   },
   {
     id: 'soybean-rust',
@@ -107,7 +107,7 @@ const SAMPLE_LEAVES: SampleLeaf[] = [
     disease: 'Phakopsora pachyrhizi',
     imageSrc: '/samples/soybean_rust.jpg',
     tag: 'Fungal Infection',
-    badgeBg: 'bg-purple-600 text-white'
+    badgeBg: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
   }
 ];
 
@@ -120,7 +120,6 @@ const categories = [
 
 const DiagnosePage = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [show3DInspector, setShow3DInspector] = useState(false);
   const [activeSampleId, setActiveSampleId] = useState<string | null>(null);
   const [sampleTrigger, setSampleTrigger] = useState<{ file: File; preview: string } | null>(null);
 
@@ -143,116 +142,94 @@ const DiagnosePage = () => {
   return (
     <Layout>
       <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto">
-        {/* Top Hero Header Section with Realistic Leaf Macro Background */}
+        {/* Top Hero Header Section with Multi-Color Aurora Glow */}
         <div 
-          className="relative rounded-3xl p-6 md:p-8 border border-white/10 shadow-2xl overflow-hidden backdrop-blur-2xl bg-cover bg-center min-h-[220px] flex flex-col justify-center transition-all"
+          className="relative rounded-3xl p-6 md:p-8 border border-white/10 shadow-2xl overflow-hidden backdrop-blur-2xl bg-cover bg-center min-h-[220px] flex flex-col justify-center transition-all bg-[#080d18]"
           style={{ backgroundImage: `url('/leaf-hero-bg.jpg')` }}
         >
           {/* Smooth Dark Vignette Gradient Mask */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#080d16] via-[#09131e]/90 to-transparent pointer-events-none" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#080d16]/70 via-transparent to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#080d18] via-[#09131e]/90 to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#080d18]/70 via-transparent to-transparent pointer-events-none" />
 
           {/* Animated Atmospheric Glow Elements */}
-          <div className="absolute top-1/4 right-1/4 w-40 h-40 bg-emerald-400/15 rounded-full blur-2xl animate-pulse-slow pointer-events-none" />
+          <div className="absolute top-1/4 right-1/4 w-52 h-52 bg-emerald-400/20 rounded-full blur-3xl animate-pulse-slow pointer-events-none" />
+          <div className="absolute bottom-1/3 left-1/3 w-40 h-40 bg-cyan-400/15 rounded-full blur-2xl animate-pulse-slow pointer-events-none" style={{ animationDelay: '2s' }} />
 
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
             {/* Left Title & Description */}
             <div className="space-y-3 max-w-2xl">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-[11px] font-bold text-emerald-400 font-mono uppercase shadow-sm">
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-teal-500/20 border border-emerald-500/40 text-[11px] font-bold text-emerald-400 font-mono uppercase shadow-[0_0_15px_rgba(16,185,129,0.2)]">
                 <Sparkles className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
-                Next-Gen AI Plant Pathology Studio
+                Next-Gen AI Plant Pathology Studio & Grad-CAM XAI
               </div>
 
-              <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-tight drop-shadow-md">
+              <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight drop-shadow-md">
                 Crop Health & <br className="hidden sm:block" />
-                Disease Diagnostic <span className="text-emerald-400 font-extrabold">AI</span>
+                Disease Diagnostic <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 font-black">AI Studio</span>
               </h1>
 
               <p className="text-xs md:text-sm text-gray-200 leading-relaxed max-w-xl drop-shadow-sm">
-                Instant leaf pathology scanning powered by deep convolutional networks (MobileNetV3). Detect 38 crop diseases, get dosage prescriptions, and hear multilingual voice remedies.
+                Instant leaf pathology scanning powered by PyTorch MobileNetV3 (99.86% val accuracy). Features explainable Grad-CAM neural attention heatmaps, lesion surface quantification, certified PDF prescriptions, and 8-language voice remedies.
               </p>
             </div>
 
             {/* Right 3 Floating Stats Badges with Micro-Interactions */}
             <div className="flex flex-wrap sm:flex-nowrap gap-3 shrink-0">
-              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#09111b]/80 border border-white/15 shadow-xl min-w-[135px] backdrop-blur-md hover:border-emerald-500/40 hover:-translate-y-1 transition-all group">
+              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#09111b]/85 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] min-w-[135px] backdrop-blur-md hover:border-emerald-500/60 hover:-translate-y-1 transition-all group">
                 <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 group-hover:scale-110 transition-transform">
-                  <Leaf className="w-5 h-5" />
+                  <Leaf className="w-5 h-5 animate-leaf-sway" />
                 </div>
                 <div>
-                  <div className="font-display text-lg font-bold text-white leading-none">38+</div>
-                  <div className="text-[10px] text-gray-300 mt-1">Diseases Detected</div>
+                  <div className="font-display text-lg font-bold text-white leading-none">38</div>
+                  <div className="text-[10px] text-gray-300 mt-1">Disease Classes</div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#09111b]/80 border border-white/15 shadow-xl min-w-[135px] backdrop-blur-md hover:border-emerald-500/40 hover:-translate-y-1 transition-all group">
-                <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 group-hover:scale-110 transition-transform">
+              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#09111b]/85 border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.15)] min-w-[135px] backdrop-blur-md hover:border-cyan-500/60 hover:-translate-y-1 transition-all group">
+                <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 group-hover:scale-110 transition-transform">
                   <Target className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="font-display text-lg font-bold text-emerald-400 leading-none">99.86%</div>
+                  <div className="font-display text-lg font-bold text-cyan-400 leading-none">99.86%</div>
                   <div className="text-[10px] text-gray-300 mt-1">AI Accuracy</div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#09111b]/80 border border-white/15 shadow-xl min-w-[135px] backdrop-blur-md hover:border-yellow-500/40 hover:-translate-y-1 transition-all group">
-                <div className="p-2.5 rounded-xl bg-yellow-500/20 text-yellow-400 group-hover:scale-110 transition-transform">
+              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#09111b]/85 border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.15)] min-w-[135px] backdrop-blur-md hover:border-amber-500/60 hover:-translate-y-1 transition-all group">
+                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
                   <Zap className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="font-display text-lg font-bold text-yellow-400 leading-none">5s</div>
-                  <div className="text-[10px] text-gray-300 mt-1">Instant Diagnosis</div>
+                  <div className="font-display text-lg font-bold text-amber-400 leading-none">&lt;20ms</div>
+                  <div className="text-[10px] text-gray-300 mt-1">Edge Latency</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Main Grid: Left Scanner & Right 8-Grid Sample Leaves / 3D Inspector */}
+        {/* Main Grid: Left Scanner & Right 8-Grid Sample Leaves */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: AI Leaf Disease Scanner (6 cols) */}
           <div className="lg:col-span-6 space-y-6">
             <CameraUpload sampleImageTrigger={sampleTrigger} />
           </div>
 
-          {/* Right Column: Sample Leaves Gallery + 3D Inspector (6 cols) */}
+          {/* Right Column: Sample Leaves Gallery (6 cols) */}
           <div className="lg:col-span-6 space-y-4">
-            {/* 3D Holographic Leaf Inspector Mode Toggle */}
-            <div className="p-4 rounded-2xl bg-[#0c1420]/80 border border-white/10 shadow-xl backdrop-blur-2xl flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Box className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs font-bold text-white">3D Holographic Model Inspector</span>
-              </div>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShow3DInspector(!show3DInspector)}
-                className={`text-xs font-bold rounded-xl border-emerald-500/30 ${
-                  show3DInspector ? 'bg-emerald-500 text-black' : 'text-emerald-400 hover:bg-emerald-500/10'
-                }`}
-              >
-                {show3DInspector ? 'Hide 3D View' : '✨ Open 3D View'}
-              </Button>
-            </div>
-
-            {/* 3D Leaf Scanner Component */}
-            {show3DInspector && (
-              <div className="animate-in fade-in zoom-in-95 duration-500">
-                <LeafScanner3D height={250} />
-              </div>
-            )}
-
             {/* Quick Test Sample Leaves Gallery Card */}
-            <div className="p-6 rounded-2xl bg-[#0c1420]/80 border border-white/10 shadow-2xl backdrop-blur-2xl space-y-4">
+            <div className="p-6 rounded-3xl bg-[#0c1422]/90 border border-white/10 shadow-[0_0_35px_rgba(0,0,0,0.6)] backdrop-blur-2xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+                  <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     <Scan className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-bold text-white font-display">
-                    Quick Test: Sample Leaves Gallery
-                  </h3>
+                  <div>
+                    <h3 className="text-sm font-bold text-white font-display">
+                      Quick Test: Sample Foliar Pathology Gallery
+                    </h3>
+                    <p className="text-[10px] text-gray-400 font-mono">1-Click Neural Disease Testing</p>
+                  </div>
                 </div>
 
                 {/* Filter Categories */}
@@ -261,10 +238,10 @@ const DiagnosePage = () => {
                     <button
                       key={cat.id}
                       onClick={() => setSelectedCategory(cat.id)}
-                      className={`text-[10px] font-semibold px-2 py-1 rounded-lg transition-all shrink-0 ${
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-xl transition-all shrink-0 ${
                         selectedCategory === cat.id
-                          ? 'bg-emerald-500 text-black font-bold shadow-sm'
-                          : 'bg-white/5 text-gray-400 hover:text-white'
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-md'
+                          : 'bg-white/5 text-gray-400 hover:text-white border border-white/5'
                       }`}
                     >
                       {cat.label}
@@ -273,8 +250,8 @@ const DiagnosePage = () => {
                 </div>
               </div>
 
-              <p className="text-xs text-gray-400">
-                Click any leaf below to instantly test the AI model without uploading your own photo.
+              <p className="text-xs text-gray-300 leading-relaxed">
+                Click any specimen below to instantly execute the PyTorch MobileNetV3 model, compute the Grad-CAM activation map, and generate the digital agronomist prescription.
               </p>
 
               {/* 8-Grid Sample Leaf Cards (4 x 2) */}
@@ -286,13 +263,13 @@ const DiagnosePage = () => {
                     <div
                       key={sample.id}
                       onClick={() => handleSelectSample(sample)}
-                      className={`group rounded-xl border p-2 transition-all cursor-pointer flex flex-col justify-between relative overflow-hidden ${
+                      className={`group rounded-2xl border p-2.5 transition-all cursor-pointer flex flex-col justify-between relative overflow-hidden ${
                         isSelected
-                          ? 'border-emerald-400 bg-emerald-950/40 shadow-[0_0_20px_rgba(16,185,129,0.35)] scale-[1.02]'
-                          : 'border-white/10 hover:border-emerald-400 bg-white/5 hover:bg-emerald-950/20 hover:-translate-y-0.5 shadow-sm hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                          ? 'border-emerald-400 bg-emerald-950/40 shadow-[0_0_25px_rgba(16,185,129,0.35)] scale-[1.02]'
+                          : 'border-white/10 hover:border-emerald-400 bg-white/5 hover:bg-emerald-950/20 hover:-translate-y-1 shadow-md hover:shadow-[0_0_20px_rgba(16,185,129,0.2)]'
                       }`}
                     >
-                      <div className="aspect-square w-full rounded-lg overflow-hidden mb-2 bg-black/40 relative">
+                      <div className="aspect-square w-full rounded-xl overflow-hidden mb-2 bg-black/50 relative border border-white/5">
                         <img
                           src={sample.imageSrc}
                           alt={sample.name}
@@ -304,12 +281,12 @@ const DiagnosePage = () => {
                           <Crosshair className="w-5 h-5 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity animate-pulse" />
                         </div>
 
-                        <span className={`absolute bottom-1 right-1 text-[9px] px-1.5 py-0.5 rounded font-bold ${sample.badgeBg}`}>
+                        <span className={`absolute bottom-1 right-1 text-[9px] px-1.5 py-0.5 rounded-md font-bold ${sample.badgeBg}`}>
                           {sample.plant}
                         </span>
 
                         {isSelected && (
-                          <div className="absolute top-1 left-1 bg-emerald-500 text-black text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 shadow-md">
+                          <div className="absolute top-1 left-1 bg-emerald-500 text-black text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-md">
                             <CheckCircle2 className="w-2.5 h-2.5" /> Selected
                           </div>
                         )}
@@ -319,7 +296,7 @@ const DiagnosePage = () => {
                         <p className="text-[11px] font-bold text-white truncate group-hover:text-emerald-400 transition-colors">
                           {sample.name}
                         </p>
-                        <p className="text-[10px] text-gray-400 truncate">
+                        <p className="text-[10px] text-gray-400 truncate font-mono">
                           {sample.tag}
                         </p>
                       </div>
@@ -331,7 +308,7 @@ const DiagnosePage = () => {
           </div>
         </div>
 
-        {/* Bottom Full-Width Section: Weather-Driven Disease Risk Radar */}
+        {/* Bottom Full-Width Section: 72-Hour Micro-Climate Epidemiology Radar */}
         <DiseaseRiskWidget />
       </div>
     </Layout>
