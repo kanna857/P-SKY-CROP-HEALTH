@@ -1,7 +1,7 @@
 /**
  * Offline In-Browser Edge AI Inference Engine
- * Client-side foliar color-space segmentation and rule-based diagnostic heuristics
- * for remote offline field usage.
+ * Client-side foliar color-space segmentation with Flood-Fill Connected Component
+ * Lesion Spot Counting for remote offline field usage.
  */
 
 export interface OfflineDiagnosisResponse {
@@ -20,6 +20,7 @@ export interface OfflineDiagnosisResponse {
     confidence: number;
     percentage: number;
   }>;
+  thermal_ironbow?: string;
   lesion_count?: number;
   infected_area_pct?: number;
   severity_stage?: string;
@@ -38,50 +39,127 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
 
       img.onload = () => {
         try {
+          const W = 256;
+          const H = 256;
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             throw new Error('Canvas 2D rendering context is not available.');
           }
 
-          canvas.width = 256;
-          canvas.height = 256;
-          ctx.drawImage(img, 0, 0, 256, 256);
+          canvas.width = W;
+          canvas.height = H;
+          ctx.drawImage(img, 0, 0, W, H);
 
-          const imageData = ctx.getImageData(0, 0, 256, 256);
+          const imageData = ctx.getImageData(0, 0, W, H);
           const data = imageData.data;
 
-          let healthyGreenPixels = 0;
-          let necroticPixels = 0;
-          let chloroticPixels = 0;
           let totalFoliarPixels = 0;
+          let diseasedPixels = 0;
 
-          for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
+          // 2D Boolean grid for connected-component spot clustering
+          const lesionGrid = new Uint8Array(W * H);
+          const heatCanvas = document.createElement('canvas');
+          heatCanvas.width = W;
+          heatCanvas.height = H;
+          const heatCtx = heatCanvas.getContext('2d');
+          const heatImageData = heatCtx ? heatCtx.createImageData(W, H) : null;
+          const hData = heatImageData?.data;
 
-            const isFoliage = (g > r * 0.9 && g > b * 0.9 && g > 35) || (r > 60 && g > 50);
-            if (isFoliage) {
-              totalFoliarPixels++;
-              const isNecrotic = (r > g * 0.9 && r > 65 && b < 130) || (r < 75 && g < 75 && b < 75);
-              const isChlorotic = r > 140 && g > 140 && b < 100;
+          for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+              const i = (y * W + x) * 4;
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
 
-              if (isNecrotic) {
-                necroticPixels++;
-              } else if (isChlorotic) {
-                chloroticPixels++;
-              } else {
-                healthyGreenPixels++;
+              // Foliar segmentation
+              const isFoliage = (g > r * 0.9 && g > b * 0.9 && g > 35) || (r > 60 && g > 50 && b < 180);
+
+              if (isFoliage) {
+                totalFoliarPixels++;
+                const isHealthyGreen = g > r * 1.05 && g > b * 1.15 && g > 55 && r < 140;
+                const isLesion = !isHealthyGreen;
+
+                if (isLesion) {
+                  diseasedPixels++;
+                  lesionGrid[y * W + x] = 1;
+                }
+
+                if (hData) {
+                  // FLIR Thermal colorization
+                  const heatVal = isLesion ? 0.90 : 0.20;
+                  const cr = Math.min(255, Math.max(0, Math.round(heatVal * 2.8 - 0.2) * 255));
+                  const cg = Math.min(255, Math.max(0, Math.round(heatVal < 0.6 ? Math.pow(heatVal, 2.2) * 200 : (heatVal - 0.6) * 600)));
+                  const cb = Math.min(255, Math.max(0, Math.round(heatVal < 0.3 ? Math.sin(heatVal * Math.PI / 0.6) * 255 : 0)));
+                  hData[i] = cr;
+                  hData[i + 1] = cg;
+                  hData[i + 2] = cb;
+                  hData[i + 3] = 255;
+                }
+              } else if (hData) {
+                hData[i] = 10;
+                hData[i + 1] = 14;
+                hData[i + 2] = 24;
+                hData[i + 3] = 255;
+              }
+            }
+          }
+
+          if (heatCtx && heatImageData) {
+            heatCtx.putImageData(heatImageData, 0, 0);
+          }
+
+          // 2. Connected Component Labeling (Flood-Fill BFS for Spot Counting)
+          const visited = new Uint8Array(W * H);
+          let spotCount = 0;
+          const minSpotSize = 8;
+          const maxSpotSize = Math.floor(W * H * 0.4);
+
+          for (let y = 1; y < H - 1; y++) {
+            for (let x = 1; x < W - 1; x++) {
+              const idx = y * W + x;
+              if (lesionGrid[idx] === 1 && visited[idx] === 0) {
+                // BFS Flood Fill
+                let componentSize = 0;
+                const queue: number[] = [idx];
+                visited[idx] = 1;
+
+                while (queue.length > 0) {
+                  const curr = queue.pop()!;
+                  componentSize++;
+
+                  const cy = Math.floor(curr / W);
+                  const cx = curr % W;
+
+                  const neighbors = [
+                    (cy - 1) * W + cx,
+                    (cy + 1) * W + cx,
+                    cy * W + (cx - 1),
+                    cy * W + (cx + 1),
+                  ];
+
+                  for (const n of neighbors) {
+                    if (n >= 0 && n < W * H && lesionGrid[n] === 1 && visited[n] === 0) {
+                      visited[n] = 1;
+                      queue.push(n);
+                    }
+                  }
+                }
+
+                if (componentSize >= minSpotSize && componentSize <= maxSpotSize) {
+                  spotCount++;
+                }
               }
             }
           }
 
           const infectedPct = totalFoliarPixels > 0
-            ? Math.round(((necroticPixels + chloroticPixels) / totalFoliarPixels) * 100 * 10) / 10
+            ? Math.round((diseasedPixels / totalFoliarPixels) * 100 * 10) / 10
             : 12.5;
 
-          const isHealthy = infectedPct < 5.0;
+          const isHealthy = infectedPct < 4.0 || spotCount === 0;
+          const accurateSpots = isHealthy ? 0 : Math.max(1, spotCount);
 
           const fileNameLower = file.name.toLowerCase();
           let detectedClass = 'Tomato___Early_blight';
@@ -97,22 +175,23 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
           } else if (fileNameLower.includes('pepper')) {
             detectedClass = isHealthy ? 'Pepper,_bell___healthy' : 'Pepper,_bell___Bacterial_spot';
           } else {
-            detectedClass = isHealthy ? 'Tomato___healthy' : (chloroticPixels > necroticPixels ? 'Tomato___Tomato_Yellow_Leaf_Curl_Virus' : 'Tomato___Early_blight');
+            detectedClass = isHealthy ? 'Tomato___healthy' : 'Tomato___Early_blight';
           }
 
           const parts = detectedClass.split('___');
           const plant = parts[0].replace(/_/g, ' ').trim();
           const issue = parts[1] ? parts[1].replace(/_/g, ' ').trim() : (isHealthy ? 'Healthy' : 'Leaf Spot');
-          const severity = isHealthy ? 'Low' : (infectedPct > 25 ? 'High' : 'Medium');
+          const severity = isHealthy ? 'Low' : (infectedPct > 20 ? 'High' : 'Medium');
 
-          const lesionCount = isHealthy ? 0 : Math.max(3, Math.round(infectedPct * 1.4));
           const severityStage = isHealthy
             ? 'Stage 0 (Healthy)'
-            : infectedPct < 8
+            : infectedPct < 6
             ? 'Stage 1 (Mild Infection)'
-            : infectedPct < 20
+            : infectedPct < 18
             ? 'Stage 2 (Moderate Spread)'
             : 'Stage 3 (Severe Damage)';
+
+          const thermalIronbowB64 = heatCanvas.toDataURL('image/jpeg', 0.90);
 
           resolve({
             raw_class: detectedClass,
@@ -139,8 +218,9 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
                 percentage: 2.4
               }
             ],
-            lesionCount,
-            infectedAreaPct: infectedPct,
+            thermal_ironbow: thermalIronbowB64,
+            lesion_count: accurateSpots,
+            infectedAreaPct: isHealthy ? 0.0 : infectedPct,
             severityStage,
             is_offline_edge: true,
           });
