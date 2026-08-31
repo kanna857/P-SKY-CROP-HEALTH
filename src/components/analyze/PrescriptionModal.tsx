@@ -137,16 +137,18 @@ export function PrescriptionModal({ isOpen, onClose, data }: PrescriptionModalPr
             </div>
           </div>
 
-          {/* Side-by-Side Visuals: Original Leaf + Grad-CAM Heatmap */}
+          {/* Visual Scanned Leaf Specimen */}
           {data.imagePreview && (
             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-gray-300 flex items-center gap-1.5 uppercase tracking-wider text-[10px]">
-                  <Layers className="w-3.5 h-3.5 text-emerald-400" /> Explainable AI Visual Pathology Verification
+                  <Layers className="w-3.5 h-3.5 text-emerald-400" /> Scanned Leaf Pathology Specimen
                 </span>
                 <span className="text-[10px] text-emerald-400 font-mono">
                   {data.confidence} Match
                 </span>
+              </div>
+
               <div className="space-y-1">
                 <div className="aspect-video max-h-52 rounded-xl overflow-hidden border border-white/10 bg-black/60 flex items-center justify-center">
                   <img src={data.imagePreview} alt="Scanned Leaf" className="w-full h-full object-contain" />
