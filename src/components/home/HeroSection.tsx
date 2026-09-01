@@ -34,9 +34,10 @@ export function HeroSection() {
         style={{ backgroundImage: `url(${heroBg})` }}
       />
       <div className="absolute inset-0 bg-gradient-to-b from-[#050911]/40 via-[#050911]/85 to-[#050911] pointer-events-none" />
-      <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] bg-emerald-500/15 rounded-full blur-[140px] animate-pulse-slow pointer-events-none" />
-      <div className="absolute bottom-1/3 right-1/4 w-[500px] h-[500px] bg-cyan-500/15 rounded-full blur-[130px] animate-pulse-slow pointer-events-none" style={{ animationDelay: '2s' }} />
-      <div className="absolute top-1/3 right-1/3 w-[400px] h-[400px] bg-purple-500/10 rounded-full blur-[120px] animate-pulse-slow pointer-events-none" style={{ animationDelay: '4s' }} />
+      <div className="absolute top-1/4 left-1/4 w-[650px] h-[650px] bg-emerald-400/25 rounded-full blur-[130px] animate-pulse-slow pointer-events-none" />
+      <div className="absolute bottom-1/3 right-1/4 w-[550px] h-[550px] bg-cyan-400/25 rounded-full blur-[120px] animate-pulse-slow pointer-events-none" style={{ animationDelay: '2s' }} />
+      <div className="absolute top-1/3 right-1/3 w-[450px] h-[450px] bg-fuchsia-500/20 rounded-full blur-[120px] animate-pulse-slow pointer-events-none" style={{ animationDelay: '4s' }} />
+      <div className="absolute bottom-1/4 left-1/3 w-[400px] h-[400px] bg-amber-400/20 rounded-full blur-[130px] animate-pulse-slow pointer-events-none" style={{ animationDelay: '6s' }} />
 
       {/* Floating Dynamic Badges */}
       <div className="hidden xl:block absolute top-28 right-[10%] animate-float" style={{ animationDelay: '0s' }}>

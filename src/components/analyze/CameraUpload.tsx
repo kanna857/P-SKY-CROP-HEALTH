@@ -33,8 +33,10 @@ import {
   Thermometer,
   Columns,
   Flame,
-  Zap
+  Zap,
+  Search
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -47,6 +49,9 @@ import { getCropDiseaseInfo, TreatmentProtocol } from '@/lib/cropDiseaseData';
 import { runInBrowserOfflineInference } from '@/lib/offlineInference';
 import { PrescriptionModal, PrescriptionData } from './PrescriptionModal';
 import { LiveCameraScanner } from './LiveCameraScanner';
+import { LesionSpot } from '@/lib/types';
+import { LesionSvgOverlay } from './LesionSvgOverlay';
+import { queueDiseaseReportOffline } from '@/lib/offlineQueue';
 
 export interface PredictionCandidate {
   raw_class: string;
@@ -79,6 +84,7 @@ export interface DiagnosisResult {
   lesionCount?: number;
   infectedAreaPct?: number;
   severityStage?: string;
+  lesionSpots?: LesionSpot[];
   isOfflineEdge?: boolean;
 }
 
@@ -112,6 +118,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('side-by-side');
   const [thermalPalette, setThermalPalette] = useState<ThermalPalette>('flir');
   const [overlayOpacity, setOverlayOpacity] = useState<number>(0.75);
+  const [showLesionOverlay, setShowLesionOverlay] = useState<boolean>(true);
 
   // Dosage Calculator State
   const [tankLiters, setTankLiters] = useState<number>(15);
@@ -198,6 +205,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           lesionCount: data.lesion_count ?? 0,
           infectedAreaPct: data.infected_area_pct ?? 0.0,
           severityStage: data.severity_stage ?? (diseaseInfo.isHealthy ? 'Stage 0 (Healthy)' : 'Stage 2 (Moderate Spread)'),
+          lesionSpots: data.lesion_spots || data.lesion_boxes || [],
           isOfflineEdge: data.is_offline_edge || false,
           diseases: !diseaseInfo.isHealthy ? [{
             name: diseaseInfo.diseaseName,
@@ -236,6 +244,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           lesionCount: data.lesion_count ?? 0,
           infectedAreaPct: data.infected_area_pct ?? 0.0,
           severityStage: data.severity_stage ?? (isHealthy ? 'Stage 0 (Healthy)' : 'Stage 2 (Moderate Spread)'),
+          lesionSpots: data.lesion_spots || data.lesion_boxes || [],
           isOfflineEdge: data.is_offline_edge || false,
           diseases: !isHealthy ? [{
             name: diseasePart,
@@ -264,6 +273,24 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
         title: result.isOfflineEdge ? 'Edge AI Thermal Scan (Offline) 📴' : 'Thermal Heatmap Scan Complete! 🔥',
         description: `Identified ${result.plantName} with ${(data.confidence * 100).toFixed(1)}% confidence.`,
       });
+
+      // Queue offline disease report if in remote field mode
+      if (result.isOfflineEdge || !navigator.onLine) {
+        try {
+          await queueDiseaseReportOffline({
+            plantName: result.plantName || 'Crop Leaf',
+            diseaseName: result.diseaseName || 'Scanned Issue',
+            severity: result.severityScore ? (result.severityScore >= 7 ? 'High' : 'Medium') : 'Medium',
+            confidence: data.confidence || 0.95,
+            lesionCount: result.lesionCount || 0,
+            infectedAreaPct: result.infectedAreaPct || 0,
+            recommendation: result.recommendations?.[0] || 'Monitor crop daily.',
+            imagePreview: preview || undefined,
+          });
+        } catch (queueErr) {
+          console.warn('Could not queue disease report offline:', queueErr);
+        }
+      }
     } catch (err: unknown) {
       console.error('Diagnosis error:', err);
       setScanStage('upload');
@@ -475,6 +502,11 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                   </div>
 
                   <img src={preview} alt="Original Leaf" className="w-full h-full object-contain" />
+
+                  {/* Interactive OpenCV Lesion Component SVG Overlay */}
+                  {diagnosis && diagnosis.lesionSpots && diagnosis.lesionSpots.length > 0 && (
+                    <LesionSvgOverlay spots={diagnosis.lesionSpots} enabled={showLesionOverlay} />
+                  )}
                 </div>
 
                 {/* Right Panel: Thermal Heatmap (Shows Where It Hurts) */}
@@ -519,6 +551,11 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                   </div>
                 )}
 
+                {/* Interactive OpenCV Lesion Component SVG Overlay */}
+                {diagnosis && diagnosis.lesionSpots && diagnosis.lesionSpots.length > 0 && (
+                  <LesionSvgOverlay spots={diagnosis.lesionSpots} enabled={showLesionOverlay} />
+                )}
+
                 {/* Laser Scanning Animation */}
                 {isAnalyzing && (
                   <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none">
@@ -548,7 +585,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             {/* Thermal Palette & Display Mode Toolbar (when diagnosed) */}
             {diagnosis && (
               <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 space-y-2.5">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
                   {/* View Mode: Side-by-Side vs Overlay */}
                   <div className="flex items-center gap-1.5">
                     <span className="text-gray-400 font-medium flex items-center gap-1 text-[11px]">
@@ -576,6 +613,26 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                         🔲 Overlay
                       </button>
                     </div>
+                  </div>
+
+                  {/* Interactive OpenCV Lesion Spots Toggle */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setShowLesionOverlay(!showLesionOverlay)}
+                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all border flex items-center gap-1.5 ${
+                        showLesionOverlay
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                          : 'bg-black/60 text-gray-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      Interactive Lesions
+                      {diagnosis.lesionSpots && diagnosis.lesionSpots.length > 0 && (
+                        <span className="bg-emerald-500/30 text-emerald-300 px-1.5 py-0.2 rounded-full text-[10px] font-mono">
+                          {diagnosis.lesionSpots.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
 
                   {/* Thermal Colormap Switcher */}
@@ -932,25 +989,41 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
             )}
 
             {/* Action Buttons */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Button
-                className="flex-1 gap-2 font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg"
-                onClick={() => setIsPrescriptionOpen(true)}
+            <div className="space-y-2 pt-1">
+              {/* Step 5: Direct Link to Google-Style Ag Search Engine with pre-populated exact query */}
+              <Link
+                to={`/search?q=${encodeURIComponent(`${diagnosis.plantName.toLowerCase()} "${diagnosis.diseaseName.toLowerCase()}"`)}`}
+                className="w-full block"
               >
-                <FileText className="w-4 h-4" /> Download Official Agronomist Report (PDF)
-              </Button>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 text-xs border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold h-9 rounded-xl shadow-sm"
+                >
+                  <Search className="w-3.5 h-3.5 text-amber-400" />
+                  Search Ag Manuals: {diagnosis.plantName.toLowerCase()} "{diagnosis.diseaseName.toLowerCase()}"
+                </Button>
+              </Link>
 
-              <Button
-                variant="outline"
-                className="gap-2 text-xs border-green-500/40 text-green-400 hover:bg-green-500/10"
-                onClick={() => setIsPrescriptionOpen(true)}
-              >
-                <Share2 className="w-4 h-4" /> WhatsApp
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="flex-1 gap-2 font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg"
+                  onClick={() => setIsPrescriptionOpen(true)}
+                >
+                  <FileText className="w-4 h-4" /> Download Official Agronomist Report (PDF)
+                </Button>
 
-              <Button variant="ghost" size="sm" className="text-xs text-gray-400 hover:text-white" onClick={handleClear}>
-                Scan Another
-              </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2 text-xs border-green-500/40 text-green-400 hover:bg-green-500/10"
+                  onClick={() => setIsPrescriptionOpen(true)}
+                >
+                  <Share2 className="w-4 h-4" /> WhatsApp
+                </Button>
+
+                <Button variant="ghost" size="sm" className="text-xs text-gray-400 hover:text-white" onClick={handleClear}>
+                  Scan Another
+                </Button>
+              </div>
             </div>
           </div>
         )}

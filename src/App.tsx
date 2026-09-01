@@ -15,6 +15,7 @@ import DiagnosePage from "./pages/DiagnosePage";
 import ChatbotPage from "./pages/ChatbotPage";
 import HistoryPage from "./pages/HistoryPage";
 import SearchEnginePage from "./pages/SearchEnginePage";
+import AgriFeedPage from "./pages/AgriFeedPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/diagnose" element={<DiagnosePage />} />
             <Route path="/analyze" element={<AnalyzePage />} />
             <Route path="/search" element={<SearchEnginePage />} />
+            <Route path="/feed" element={<AgriFeedPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/compare" element={<CompareFieldsPage />} />
             <Route path="/chatbot" element={<ChatbotPage />} />

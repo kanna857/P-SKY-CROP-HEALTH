@@ -128,7 +128,7 @@ const CompareFieldsPage = () => {
               key={field.id}
               field={field}
               rank={index + 1}
-              isPriority={index === 0}
+              showPriority={index === 0}
             />
           ))}
         </div>

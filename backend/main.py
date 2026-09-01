@@ -216,13 +216,25 @@ def analyze_leaf_lesions(img: Image.Image, is_healthy: bool):
             "lesion_count": 0,
             "infected_area_pct": 0.0,
             "severity_stage": "Stage 0 (Healthy)",
+            "lesion_spots": [],
             "lesion_boxes": []
         }
 
     try:
-        # Convert PIL to BGR OpenCV format
-        rgb_arr = np.array(img.convert("RGB"))
-        cv_img = cv2.cvtColor(rgb_arr, cv2.COLOR_RGB2BGR)
+        # Convert PIL or numpy array to BGR OpenCV format
+        if isinstance(img, np.ndarray):
+            if len(img.shape) == 2:
+                cv_img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            elif img.shape[2] == 4:
+                cv_img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+            else:
+                cv_img = img.copy()
+        elif hasattr(img, 'convert'):
+            rgb_arr = np.array(img.convert("RGB"))
+            cv_img = cv2.cvtColor(rgb_arr, cv2.COLOR_RGB2BGR)
+        else:
+            cv_img = np.array(img)
+
         h, w = cv_img.shape[:2]
 
         # 1. Segment Foliage Blade from background using Excess Green Chromaticity
@@ -250,15 +262,80 @@ def analyze_leaf_lesions(img: Image.Image, is_healthy: bool):
         k_spot = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         cleaned_lesions = cv2.morphologyEx(is_lesion.astype(np.uint8), cv2.MORPH_OPEN, k_spot)
 
-        # 3. Accurate Connected Components Labeling for distinct lesion spot counting
+        # 3. Connected Components Labeling for distinct lesion spots
         num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(cleaned_lesions, connectivity=8)
 
         # Filter valid discrete lesion spots by area (ignore single pixel dust and full background)
         min_spot_area = max(10, int(total_leaf_pixels * 0.00025))
         max_spot_area = int(total_leaf_pixels * 0.35)
 
-        valid_spots = [s for s in stats[1:] if min_spot_area <= s[cv2.CC_STAT_AREA] <= max_spot_area]
-        lesion_count = max(1, len(valid_spots))
+        raw_spots = []
+        for i in range(1, num_labels):
+            area = int(stats[i, cv2.CC_STAT_AREA])
+            if min_spot_area <= area <= max_spot_area:
+                raw_spots.append((i, area))
+
+        # Sort spots by area descending (largest/most significant lesions first)
+        raw_spots.sort(key=lambda s: s[1], reverse=True)
+        # Cap to top 40 spots to keep JSON responsive and clean
+        selected_spots = raw_spots[:40]
+
+        lesion_spots = []
+        for rank, (i, area) in enumerate(selected_spots, start=1):
+            sx = int(stats[i, cv2.CC_STAT_LEFT])
+            sy = int(stats[i, cv2.CC_STAT_TOP])
+            sw = int(stats[i, cv2.CC_STAT_WIDTH])
+            sh = int(stats[i, cv2.CC_STAT_HEIGHT])
+            scx = float(centroids[i][0])
+            scy = float(centroids[i][1])
+
+            # Normalized coordinates (0.0 to 1.0) for fluid SVG responsiveness
+            x_norm = round(float(sx / w), 4)
+            y_norm = round(float(sy / h), 4)
+            w_norm = round(float(sw / w), 4)
+            h_norm = round(float(sh / h), 4)
+            cx_norm = round(float(scx / w), 4)
+            cy_norm = round(float(scy / h), 4)
+
+            # Area as percentage of leaf blade
+            area_pct = round(float((area / total_leaf_pixels) * 100.0), 2)
+
+            # Inspect necrotic core density using patch brightness in value channel
+            component_patch_mask = (labels[sy:sy + sh, sx:sx + sw] == i)
+            patch_val = val[sy:sy + sh, sx:sx + sw][component_patch_mask]
+            mean_brightness = float(np.mean(patch_val)) if len(patch_val) > 0 else 120.0
+
+            if mean_brightness < 90 or area_pct > 1.5:
+                necrotic_index = "High (Necrotic Core)"
+                severity_score = min(9.9, round(7.5 + (area_pct * 1.2), 1))
+            elif mean_brightness < 150 or area_pct > 0.5:
+                necrotic_index = "Moderate (Chlorotic Spread)"
+                severity_score = min(7.4, round(4.5 + (area_pct * 1.5), 1))
+            else:
+                necrotic_index = "Mild (Superficial Lesion)"
+                severity_score = min(4.4, round(2.0 + (area_pct * 2.0), 1))
+
+            lesion_spots.append({
+                "id": rank,
+                "x": sx,
+                "y": sy,
+                "width": sw,
+                "height": sh,
+                "cx": round(scx, 1),
+                "cy": round(scy, 1),
+                "x_norm": x_norm,
+                "y_norm": y_norm,
+                "w_norm": w_norm,
+                "h_norm": h_norm,
+                "cx_norm": cx_norm,
+                "cy_norm": cy_norm,
+                "area_px": area,
+                "area_pct": area_pct,
+                "necrotic_index": necrotic_index,
+                "severity_score": severity_score
+            })
+
+        lesion_count = max(len(raw_spots), len(lesion_spots))
 
         # 4. Compute accurate infected leaf area percentage
         lesion_pixel_sum = int(np.sum(cleaned_lesions > 0))
@@ -275,11 +352,16 @@ def analyze_leaf_lesions(img: Image.Image, is_healthy: bool):
         else:
             stage = "Stage 4 (Critical Outbreak)"
 
+        # Determine overall numeric severity score (1.0 to 10.0 scale)
+        overall_severity_score = round(float(min(10.0, max(1.0, (infected_area_pct / 50.0) * 7.0 + min(3.0, lesion_count * 0.3)))), 1)
+
         return {
             "lesion_count": lesion_count,
             "infected_area_pct": infected_area_pct,
             "severity_stage": stage,
-            "lesion_boxes": []
+            "severity_score": overall_severity_score,
+            "lesion_spots": lesion_spots,
+            "lesion_boxes": lesion_spots
         }
     except Exception as err:
         print(f"[WARN] Error in OpenCV lesion segmentation: {err}")
@@ -287,6 +369,8 @@ def analyze_leaf_lesions(img: Image.Image, is_healthy: bool):
             "lesion_count": 8,
             "infected_area_pct": 12.5,
             "severity_stage": "Stage 2 (Moderate Spread)",
+            "severity_score": 4.5,
+            "lesion_spots": [],
             "lesion_boxes": []
         }
 
@@ -376,6 +460,7 @@ async def predict_crop_disease(file: UploadFile = File(...)):
             "lesion_count": lesion_data["lesion_count"],
             "infected_area_pct": lesion_data["infected_area_pct"],
             "severity_stage": lesion_data["severity_stage"],
+            "lesion_spots": lesion_data["lesion_spots"],
             "lesion_boxes": lesion_data["lesion_boxes"]
         })
 
@@ -418,6 +503,110 @@ async def chat_with_agronomist(req: ChatRequest):
     return JSONResponse({
         "response": response_text,
         "reply": response_text
+    })
+
+def create_spectral_map_b64(base_val: float, mode: str = "ndvi") -> str:
+    """Generates a high-resolution 2D raster colormap for field visualization."""
+    res = 120
+    x = np.linspace(-2, 2, res)
+    y = np.linspace(-2, 2, res)
+    xx, yy = np.meshgrid(x, y)
+    noise = np.sin(xx * 2.5) * np.cos(yy * 2.5) * 0.15 + np.sin(xx * 4.0 + yy * 3.0) * 0.08
+    grid = np.clip(base_val + noise, 0.05, 0.98)
+
+    rgb = np.zeros((res, res, 3), dtype=np.uint8)
+    if mode == "ndvi":
+        # Red (0.0) -> Yellow (0.45) -> Green (0.75) -> Deep Emerald (1.0)
+        r = np.clip(np.where(grid < 0.5, 255, 255 - (grid - 0.5) * 450), 20, 240)
+        g = np.clip(np.where(grid < 0.4, grid * 500, 180 + grid * 70), 30, 230)
+        b = np.clip(np.where(grid < 0.2, 50, 40), 20, 80)
+    elif mode == "evi":
+        # Amber -> Light Green -> Dark Forest
+        r = np.clip((1.0 - grid) * 200, 30, 220)
+        g = np.clip(grid * 240, 60, 245)
+        b = np.clip((grid * 0.5) * 150, 20, 120)
+    else:  # ndwi water stress
+        # Tan/Dry -> Light Cyan -> Royal Blue
+        r = np.clip((1.0 - grid) * 180, 20, 220)
+        g = np.clip(grid * 200 + 40, 40, 230)
+        b = np.clip(grid * 255, 60, 255)
+
+    rgb[:, :, 0] = r.astype(np.uint8)
+    rgb[:, :, 1] = g.astype(np.uint8)
+    rgb[:, :, 2] = b.astype(np.uint8)
+
+    pil_img = Image.fromarray(rgb).resize((256, 256), Image.BICUBIC)
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+
+@app.post("/analyze-field")
+async def analyze_field_stac(geo_json: Dict[str, Any]):
+    """
+    Simulates Sentinel-2 Planetary Computer STAC processing for custom-drawn GeoJSON polygons.
+    Calculates multi-spectral indices, generates VRA zones, and creates historical time-lapse passes.
+    """
+    mean_ndvi = 0.72
+    mean_evi = 0.64
+    mean_ndwi = 0.31
+
+    # Extract rough centroid if coordinates exist
+    try:
+        geometry = geo_json.get("geometry", geo_json)
+        coords = geometry.get("coordinates", [])
+        if coords and len(coords[0]) > 0:
+            lats = [pt[1] for pt in coords[0]]
+            lngs = [pt[0] for pt in coords[0]]
+            c_lat = sum(lats) / len(lats)
+            c_lng = sum(lngs) / len(lngs)
+            # Add subtle deterministic variation based on centroid
+            seed = (c_lat + c_lng) % 1.0
+            mean_ndvi = round(0.55 + seed * 0.35, 2)
+            mean_evi = round(mean_ndvi * 0.88, 2)
+            mean_ndwi = round((mean_ndvi - 0.4) * 0.7, 2)
+    except Exception:
+        pass
+
+    ndvi_map = create_spectral_map_b64(mean_ndvi, "ndvi")
+    evi_map = create_spectral_map_b64(mean_evi, "evi")
+    ndwi_map = create_spectral_map_b64(mean_ndwi, "ndwi")
+
+    # 5 temporal Sentinel-2 passes across the crop cycle
+    historical = [
+        {"date": "2026-06-12", "mean_ndvi": round(max(0.25, mean_ndvi - 0.32), 2), "cloud_cover": 4.1, "ndvi_map": create_spectral_map_b64(mean_ndvi - 0.32, "ndvi")},
+        {"date": "2026-07-01", "mean_ndvi": round(max(0.35, mean_ndvi - 0.20), 2), "cloud_cover": 2.5, "ndvi_map": create_spectral_map_b64(mean_ndvi - 0.20, "ndvi")},
+        {"date": "2026-07-22", "mean_ndvi": round(max(0.45, mean_ndvi - 0.10), 2), "cloud_cover": 1.8, "ndvi_map": create_spectral_map_b64(mean_ndvi - 0.10, "ndvi")},
+        {"date": "2026-08-10", "mean_ndvi": round(mean_ndvi, 2), "cloud_cover": 2.2, "ndvi_map": ndvi_map},
+        {"date": "2026-08-28", "mean_ndvi": round(min(0.95, mean_ndvi + 0.05), 2), "cloud_cover": 1.2, "ndvi_map": create_spectral_map_b64(mean_ndvi + 0.05, "ndvi")},
+    ]
+
+    vra_geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"zone": "High Vigor Zone", "rate_kg_ha": 35, "recommendation": "Maintenance NPK"},
+                "geometry": geo_json.get("geometry", geo_json)
+            }
+        ]
+    }
+
+    return JSONResponse({
+        "success": True,
+        "acquisition_date": "2026-08-28",
+        "cloud_cover_percent": 1.8,
+        "indices": {
+            "mean_ndvi": mean_ndvi,
+            "mean_evi": mean_evi,
+            "mean_ndwi": mean_ndwi
+        },
+        "visuals": {
+            "ndvi_map": ndvi_map,
+            "evi_map": evi_map,
+            "ndwi_map": ndwi_map
+        },
+        "vra_geojson": vra_geojson,
+        "historical": historical
     })
 
 if __name__ == "__main__":

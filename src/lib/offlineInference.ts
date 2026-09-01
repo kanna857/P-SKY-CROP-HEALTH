@@ -4,6 +4,8 @@
  * Lesion Spot Counting for remote offline field usage.
  */
 
+import { LesionSpot } from './types';
+
 export interface OfflineDiagnosisResponse {
   raw_class: string;
   disease: string;
@@ -24,6 +26,7 @@ export interface OfflineDiagnosisResponse {
   lesion_count?: number;
   infected_area_pct?: number;
   severity_stage?: string;
+  lesion_spots?: LesionSpot[];
   is_offline_edge?: boolean;
 }
 
@@ -112,7 +115,7 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
 
           // 2. Connected Component Labeling (Flood-Fill BFS for Spot Counting)
           const visited = new Uint8Array(W * H);
-          let spotCount = 0;
+          const rawComponents: Array<{ minX: number; maxX: number; minY: number; maxY: number; count: number; sumX: number; sumY: number }> = [];
           const minSpotSize = 8;
           const maxSpotSize = Math.floor(W * H * 0.4);
 
@@ -122,6 +125,13 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
               if (lesionGrid[idx] === 1 && visited[idx] === 0) {
                 // BFS Flood Fill
                 let componentSize = 0;
+                let cMinX = x;
+                let cMaxX = x;
+                let cMinY = y;
+                let cMaxY = y;
+                let cSumX = 0;
+                let cSumY = 0;
+
                 const queue: number[] = [idx];
                 visited[idx] = 1;
 
@@ -131,6 +141,13 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
 
                   const cy = Math.floor(curr / W);
                   const cx = curr % W;
+                  cSumX += cx;
+                  cSumY += cy;
+
+                  if (cx < cMinX) cMinX = cx;
+                  if (cx > cMaxX) cMaxX = cx;
+                  if (cy < cMinY) cMinY = cy;
+                  if (cy > cMaxY) cMaxY = cy;
 
                   const neighbors = [
                     (cy - 1) * W + cx,
@@ -148,11 +165,63 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
                 }
 
                 if (componentSize >= minSpotSize && componentSize <= maxSpotSize) {
-                  spotCount++;
+                  rawComponents.push({
+                    minX: cMinX,
+                    maxX: cMaxX,
+                    minY: cMinY,
+                    maxY: cMaxY,
+                    count: componentSize,
+                    sumX: cSumX,
+                    sumY: cSumY,
+                  });
                 }
               }
             }
           }
+
+          rawComponents.sort((a, b) => b.count - a.count);
+          const topComponents = rawComponents.slice(0, 30);
+
+          const lesionSpots: LesionSpot[] = topComponents.map((c, index) => {
+            const width = c.maxX - c.minX + 1;
+            const height = c.maxY - c.minY + 1;
+            const cx = c.sumX / c.count;
+            const cy = c.sumY / c.count;
+            const areaPct = totalFoliarPixels > 0 ? (c.count / totalFoliarPixels) * 100 : 0.5;
+
+            const isDarkNecrotic = areaPct > 1.2;
+            const necroticIndex = isDarkNecrotic
+              ? 'High (Necrotic Core)'
+              : areaPct > 0.4
+              ? 'Moderate (Chlorotic Spread)'
+              : 'Mild (Superficial Lesion)';
+
+            const severityScore = isDarkNecrotic
+              ? Math.min(9.8, parseFloat((7.0 + areaPct * 1.5).toFixed(1)))
+              : Math.min(7.0, parseFloat((4.0 + areaPct * 2.0).toFixed(1)));
+
+            return {
+              id: index + 1,
+              x: c.minX,
+              y: c.minY,
+              width,
+              height,
+              cx: parseFloat(cx.toFixed(1)),
+              cy: parseFloat(cy.toFixed(1)),
+              x_norm: parseFloat((c.minX / W).toFixed(4)),
+              y_norm: parseFloat((c.minY / H).toFixed(4)),
+              w_norm: parseFloat((width / W).toFixed(4)),
+              h_norm: parseFloat((height / H).toFixed(4)),
+              cx_norm: parseFloat((cx / W).toFixed(4)),
+              cy_norm: parseFloat((cy / H).toFixed(4)),
+              area_px: c.count,
+              area_pct: parseFloat(areaPct.toFixed(2)),
+              necrotic_index: necroticIndex,
+              severity_score: severityScore,
+            };
+          });
+
+          const spotCount = rawComponents.length;
 
           const infectedPct = totalFoliarPixels > 0
             ? Math.round((diseasedPixels / totalFoliarPixels) * 100 * 10) / 10
@@ -220,8 +289,9 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
             ],
             thermal_ironbow: thermalIronbowB64,
             lesion_count: accurateSpots,
-            infectedAreaPct: isHealthy ? 0.0 : infectedPct,
-            severityStage,
+            infected_area_pct: isHealthy ? 0.0 : infectedPct,
+            severity_stage: severityStage,
+            lesion_spots: isHealthy ? [] : lesionSpots,
             is_offline_edge: true,
           });
         } catch (err) {

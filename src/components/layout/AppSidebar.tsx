@@ -18,7 +18,8 @@ import {
   Sparkles,
   Radio,
   ShieldCheck,
-  Search
+  Search,
+  MessageSquare
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,19 +31,113 @@ interface NavItem {
   label: string;
   icon: any;
   color: string;
-  badge?: string;
+  iconBg: string;
+  activeGradient: string;
+  activeBorder: string;
+  glow: string;
 }
 
 const navItems: NavItem[] = [
-  { href: '/', label: 'Home', icon: Home, color: 'text-emerald-400' },
-  { href: '/diagnose', label: 'AI Disease Scanner', icon: Scan, color: 'text-amber-400', badge: '38 Crops' },
-  { href: '/analyze', label: 'Satellite Multi-Index', icon: Satellite, color: 'text-cyan-400', badge: '5 Bands' },
-  { href: '/search', label: 'AI Search Engine', icon: Search, color: 'text-amber-300', badge: 'Database' },
-  { href: '/dashboard', label: 'Farm Dashboard', icon: LayoutDashboard, color: 'text-violet-400' },
-  { href: '/compare', label: 'Compare Fields', icon: BarChart2, color: 'text-pink-400' },
-  { href: '/chatbot', label: 'AI Agronomist Voice', icon: Bot, color: 'text-teal-400', badge: '8 Langs' },
-  { href: '/history', label: 'Field History', icon: History, color: 'text-indigo-400', badge: 'Archive' },
-  { href: '/about', label: 'Settings & Model', icon: Settings, color: 'text-gray-400' },
+  { 
+    href: '/', 
+    label: 'Home', 
+    icon: Home, 
+    color: 'text-emerald-400',
+    iconBg: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+    activeGradient: 'from-emerald-500/30 via-teal-500/20 to-emerald-500/5',
+    activeBorder: 'border-emerald-400',
+    glow: 'shadow-[0_0_25px_rgba(16,185,129,0.35)]'
+  },
+  { 
+    href: '/diagnose', 
+    label: 'AI Disease Scanner', 
+    icon: Scan, 
+    color: 'text-amber-400', 
+    iconBg: 'bg-amber-500/15 border-amber-500/30 text-amber-300',
+    activeGradient: 'from-amber-500/30 via-orange-500/20 to-amber-500/5',
+    activeBorder: 'border-amber-400',
+    glow: 'shadow-[0_0_25px_rgba(245,158,11,0.35)]'
+  },
+  { 
+    href: '/analyze', 
+    label: 'Satellite Multi-Index', 
+    icon: Satellite, 
+    color: 'text-cyan-400', 
+    iconBg: 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300',
+    activeGradient: 'from-cyan-500/30 via-sky-500/20 to-cyan-500/5',
+    activeBorder: 'border-cyan-400',
+    glow: 'shadow-[0_0_25px_rgba(6,182,212,0.35)]'
+  },
+  { 
+    href: '/search', 
+    label: 'SkySearch Ag Engine', 
+    icon: Search, 
+    color: 'text-emerald-400', 
+    iconBg: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+    activeGradient: 'from-emerald-500/30 via-teal-500/20 to-emerald-500/5',
+    activeBorder: 'border-emerald-400',
+    glow: 'shadow-[0_0_25px_rgba(16,185,129,0.35)]'
+  },
+  { 
+    href: '/feed', 
+    label: 'AgriTweets (AgriX)', 
+    icon: MessageSquare, 
+    color: 'text-sky-400', 
+    iconBg: 'bg-sky-500/15 border-sky-500/30 text-sky-300',
+    activeGradient: 'from-sky-500/30 via-blue-500/20 to-sky-500/5',
+    activeBorder: 'border-sky-400',
+    glow: 'shadow-[0_0_25px_rgba(56,189,248,0.35)]'
+  },
+  { 
+    href: '/dashboard', 
+    label: 'Farm Dashboard', 
+    icon: LayoutDashboard, 
+    color: 'text-purple-400',
+    iconBg: 'bg-purple-500/15 border-purple-500/30 text-purple-300',
+    activeGradient: 'from-purple-500/30 via-violet-500/20 to-purple-500/5',
+    activeBorder: 'border-purple-400',
+    glow: 'shadow-[0_0_25px_rgba(168,85,247,0.35)]'
+  },
+  { 
+    href: '/compare', 
+    label: 'Compare Fields', 
+    icon: BarChart2, 
+    color: 'text-pink-400',
+    iconBg: 'bg-pink-500/15 border-pink-500/30 text-pink-300',
+    activeGradient: 'from-pink-500/30 via-rose-500/20 to-pink-500/5',
+    activeBorder: 'border-pink-400',
+    glow: 'shadow-[0_0_25px_rgba(236,72,153,0.35)]'
+  },
+  { 
+    href: '/chatbot', 
+    label: 'AI Agronomist Voice', 
+    icon: Bot, 
+    color: 'text-teal-400', 
+    iconBg: 'bg-teal-500/15 border-teal-500/30 text-teal-300',
+    activeGradient: 'from-teal-500/30 via-emerald-500/20 to-teal-500/5',
+    activeBorder: 'border-teal-400',
+    glow: 'shadow-[0_0_25px_rgba(20,184,166,0.35)]'
+  },
+  { 
+    href: '/history', 
+    label: 'Field History', 
+    icon: History, 
+    color: 'text-indigo-400', 
+    iconBg: 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300',
+    activeGradient: 'from-indigo-500/30 via-blue-500/20 to-indigo-500/5',
+    activeBorder: 'border-indigo-400',
+    glow: 'shadow-[0_0_25px_rgba(99,102,241,0.35)]'
+  },
+  { 
+    href: '/about', 
+    label: 'Settings & Model', 
+    icon: Settings, 
+    color: 'text-orange-400',
+    iconBg: 'bg-orange-500/15 border-orange-500/30 text-orange-300',
+    activeGradient: 'from-orange-500/30 via-amber-500/20 to-orange-500/5',
+    activeBorder: 'border-orange-400',
+    glow: 'shadow-[0_0_25px_rgba(249,115,22,0.35)]'
+  },
 ];
 
 export function AppSidebar() {
@@ -51,26 +146,26 @@ export function AppSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const NavContent = () => (
-    <div className="flex flex-col h-full justify-between p-4 bg-[#080d18] text-white">
+    <div className="flex flex-col h-full justify-between p-4 bg-gradient-to-b from-[#080f1b]/95 via-[#060a12]/95 to-[#08101a]/95 text-white">
       {/* Brand Header */}
       <div className="space-y-6">
         <Link to="/" className="flex items-center gap-3 px-2 py-1 group">
-          <div className="p-2.5 rounded-2xl bg-gradient-to-br from-emerald-500/20 via-cyan-500/15 to-teal-500/20 border border-emerald-500/30 text-emerald-400 group-hover:scale-105 transition-all shadow-[0_0_20px_rgba(16,185,129,0.25)]">
+          <div className="p-2.5 rounded-2xl bg-gradient-to-br from-emerald-500/30 via-cyan-500/25 to-purple-500/30 border border-emerald-400/50 text-emerald-300 group-hover:scale-105 transition-all shadow-[0_0_25px_rgba(16,185,129,0.4)]">
             <Satellite className="w-5 h-5 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-display text-lg font-bold tracking-tight text-white">
-                SkyCrop<span className="text-emerald-400"> Health</span>
+                SkyCrop<span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400"> Health</span>
               </span>
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
             </div>
-            <p className="text-[10px] text-gray-400 font-mono">Precision Agriculture AI</p>
+            <p className="text-[10px] text-emerald-400/80 font-mono font-medium">Precision Agriculture AI</p>
           </div>
         </Link>
 
         {/* Vertical Navigation */}
-        <nav className="space-y-1">
+        <nav className="space-y-1.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isDiagnose = item.href === '/diagnose' && location.pathname === '/diagnose';
@@ -85,27 +180,24 @@ export function AppSidebar() {
               >
                 <div
                   className={cn(
-                    'flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 group',
+                    'flex items-center justify-between px-3 py-2 rounded-2xl text-xs transition-all duration-300 group border',
                     isActive
-                      ? 'bg-gradient-to-r from-emerald-500/15 via-cyan-500/10 to-transparent text-white font-bold border-l-2 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      ? cn('bg-gradient-to-r text-white font-bold border-l-4 shadow-lg scale-[1.02]', item.activeGradient, item.activeBorder, item.glow)
+                      : 'text-gray-300 hover:text-white hover:bg-white/[0.08] hover:border-white/15 border-transparent hover:scale-[1.01]'
                   )}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className={cn(
-                      'p-1 rounded-lg transition-transform group-hover:scale-110',
-                      isActive ? 'bg-white/10' : 'bg-transparent'
+                      'p-1.5 rounded-xl transition-all duration-300 group-hover:scale-110 shadow-sm border',
+                      item.iconBg,
+                      isActive ? 'ring-2 ring-white/20' : ''
                     )}>
                       <Icon className={cn('w-4 h-4 shrink-0', item.color)} />
                     </div>
-                    <span className="truncate">{item.label}</span>
-                  </div>
-
-                  {item.badge && (
-                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-gray-300 group-hover:border-emerald-500/30 group-hover:text-emerald-400 transition-colors">
-                      {item.badge}
+                    <span className={cn('truncate font-medium', isActive ? 'text-white font-bold' : 'group-hover:text-white')}>
+                      {item.label}
                     </span>
-                  )}
+                  </div>
                 </div>
               </Link>
             );
@@ -115,22 +207,24 @@ export function AppSidebar() {
 
       {/* Bottom User Account / Green Farmer Profile */}
       <div className="pt-4 border-t border-white/10 space-y-3">
-        <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-[#0c1420] to-[#0c1420] border border-emerald-500/20 flex items-center justify-between">
+        <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/50 via-teal-950/40 to-[#0c1420] border border-emerald-500/30 flex items-center justify-between shadow-[0_0_20px_rgba(16,185,129,0.15)]">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-              <User className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-400 via-teal-400 to-cyan-400 p-[2px] shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.4)]">
+              <div className="w-full h-full rounded-full bg-[#081018] flex items-center justify-center text-emerald-400 font-bold text-xs">
+                <User className="w-4 h-4" />
+              </div>
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold text-white truncate">
                 {user?.email ? user.email.split('@')[0] : 'Green Farmer'}
               </p>
               <div className="flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                <span className="text-[10px] text-emerald-400 font-semibold">Pro Agronomist</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-[10px] text-emerald-300 font-semibold">Pro Agronomist</span>
               </div>
             </div>
           </div>
-          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+          <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
         </div>
       </div>
     </div>

@@ -47,8 +47,9 @@ export function SavedFieldsSidebar({ onSelectField, selectedFieldId, savedFields
                     lat: demo.lat,
                     lng: demo.lng,
                     area: demo.area,
-                    cropType: demo.cropType,
+                    crop: demo.crop,
                     ndvi: demo.ndvi,
+                    lastAnalysis: demo.lastAnalysis,
                     savedAt: new Date().toISOString()
                   })}
                   className="w-full text-left p-2 rounded-xl bg-secondary/30 hover:bg-primary/10 border border-border/40 hover:border-primary/40 transition-all flex items-center justify-between group"
@@ -58,7 +59,7 @@ export function SavedFieldsSidebar({ onSelectField, selectedFieldId, savedFields
                       {demo.name}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      {demo.cropType} • {demo.area} ha
+                      {demo.crop} • {demo.area} ha
                     </p>
                   </div>
                   <span className="text-xs font-bold text-primary shrink-0 ml-2">
@@ -91,7 +92,7 @@ export function SavedFieldsSidebar({ onSelectField, selectedFieldId, savedFields
                     <p className="font-semibold text-foreground truncate text-xs">{field.name}</p>
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
                       <span className="flex items-center gap-0.5">
-                        <MapPin className="w-2.5 h-2.5" /> {field.cropType || 'Crop Field'}
+                        <MapPin className="w-2.5 h-2.5" /> {field.crop || 'Crop Field'}
                       </span>
                       <span>•</span>
                       <span className={cn('font-bold', category.color)}>NDVI {field.ndvi.toFixed(2)}</span>

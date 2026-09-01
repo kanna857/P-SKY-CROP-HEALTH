@@ -307,3 +307,36 @@ export const SPECTRAL_INDICES: Record<SpectralIndexType, SpectralIndexInfo> = {
   },
 };
 
+export interface LesionSpot {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  cx: number;
+  cy: number;
+  x_norm: number;
+  y_norm: number;
+  w_norm: number;
+  h_norm: number;
+  cx_norm: number;
+  cy_norm: number;
+  area_px: number;
+  area_pct: number;
+  necrotic_index: string;
+  severity_score: number;
+}
+
+export interface TurfGeospatialMetrics {
+  areaM2: number;
+  areaHa: number;
+  acreage: number;
+  perimeterKm: number;
+  perimeterM: number;
+  centroid: {
+    lat: number;
+    lng: number;
+  };
+  bbox: [number, number, number, number];
+}
+

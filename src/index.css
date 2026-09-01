@@ -139,12 +139,29 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400;
   }
 
+  .text-gradient-rainbow {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#4285F4] via-[#34A853] via-[#FBBC05] to-[#EA4335];
+  }
+
+  .text-gradient-cosmic {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-violet-400 via-pink-400 to-amber-300;
+  }
+
+  .glass-card-rainbow {
+    @apply bg-[#0a121e]/90 backdrop-blur-2xl rounded-2xl relative border border-white/10;
+    box-shadow: 0 0 35px rgba(66, 133, 244, 0.15), 0 0 25px rgba(244, 63, 94, 0.1), 0 12px 40px rgba(0, 0, 0, 0.6);
+  }
+
   .btn-primary {
     @apply bg-gradient-to-r from-emerald-500 via-emerald-400 to-teal-400 text-black font-bold hover:from-emerald-400 hover:to-teal-300 transition-all duration-300 shadow-lg shadow-emerald-500/25;
   }
 
   .btn-accent {
     @apply bg-gradient-to-r from-amber-500 via-amber-400 to-orange-400 text-black font-bold hover:from-amber-400 hover:to-orange-300 transition-all duration-300 shadow-lg shadow-amber-500/25;
+  }
+
+  .btn-rainbow {
+    @apply bg-gradient-to-r from-blue-500 via-emerald-400 via-amber-400 to-rose-500 text-white font-bold hover:opacity-95 transition-all duration-300 shadow-lg shadow-blue-500/30;
   }
 
   /* Micro Animations */

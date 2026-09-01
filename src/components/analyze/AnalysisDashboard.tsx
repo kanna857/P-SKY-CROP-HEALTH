@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { DemoField, NDVIData } from '@/lib/types';
 import { getCropSpecificNDVICategory } from '@/lib/cropThresholds';
 import { CropHealthIndicator } from '@/components/analyze/CropHealthIndicator';
+import { MultiVariantTimeline } from '@/components/analyze/MultiVariantTimeline';
+import { SeasonalHealthIndexChart } from '@/components/analyze/SeasonalHealthIndexChart';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, Droplets, Bug, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Droplets, Bug, AlertTriangle, Activity, History, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface AnalysisDashboardProps {
@@ -11,6 +14,7 @@ interface AnalysisDashboardProps {
 }
 
 export function AnalysisDashboard({ field, data }: AnalysisDashboardProps) {
+  const [activeChartTab, setActiveChartTab] = useState<'multivariant' | 'seasonal' | 'summary'>('multivariant');
   const category = getCropSpecificNDVICategory(data.average, field.crop);
 
   const getTrendIcon = () => {
@@ -86,46 +90,84 @@ export function AnalysisDashboard({ field, data }: AnalysisDashboardProps) {
         </div>
       </div>
 
-      {/* Trend Chart */}
-      <div className="glass-card p-6 rounded-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-display text-lg font-semibold">Health Trend (4 Weeks)</h3>
-          {getTrendIcon()}
-        </div>
-        <div className="h-48">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data.trend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(222 47% 18%)" />
-              <XAxis
-                dataKey="week"
-                stroke="hsl(215 20% 65%)"
-                fontSize={12}
-              />
-              <YAxis
-                domain={[0, 1]}
-                stroke="hsl(215 20% 65%)"
-                fontSize={12}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(222 47% 10%)',
-                  border: '1px solid hsl(222 47% 18%)',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: 'hsl(210 40% 98%)' }}
-              />
-              <Line
-                type="monotone"
-                dataKey="ndvi"
-                stroke="hsl(160 84% 39%)"
-                strokeWidth={3}
-                dot={{ fill: 'hsl(160 84% 39%)', strokeWidth: 2 }}
-                activeDot={{ r: 6, fill: 'hsl(160 84% 39%)' }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+      {/* High-Fidelity Charting Tabs */}
+      <div className="flex items-center justify-between gap-2 border-b border-border pb-2">
+        <div className="flex bg-secondary/50 p-1 rounded-xl border border-border text-xs">
+          <button
+            onClick={() => setActiveChartTab('multivariant')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+              activeChartTab === 'multivariant'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" /> Multi-Variant Timeline
+          </button>
+          <button
+            onClick={() => setActiveChartTab('seasonal')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+              activeChartTab === 'seasonal'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" /> 3-Year Baseline Anomaly
+          </button>
+          <button
+            onClick={() => setActiveChartTab('summary')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+              activeChartTab === 'summary'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" /> 4-Week Trend
+          </button>
         </div>
       </div>
+
+      {/* Active Chart View */}
+      {activeChartTab === 'multivariant' && (
+        <MultiVariantTimeline crop={field.crop} baseNdvi={data.average} />
+      )}
+
+      {activeChartTab === 'seasonal' && (
+        <SeasonalHealthIndexChart crop={field.crop} fieldId={field.id} />
+      )}
+
+      {activeChartTab === 'summary' && (
+        <div className="glass-card p-6 rounded-xl">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-lg font-semibold">Health Trend (4 Weeks)</h3>
+            {getTrendIcon()}
+          </div>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data.trend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(222 47% 18%)" />
+                <XAxis dataKey="week" stroke="hsl(215 20% 65%)" fontSize={12} />
+                <YAxis domain={[0, 1]} stroke="hsl(215 20% 65%)" fontSize={12} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(222 47% 10%)',
+                    border: '1px solid hsl(222 47% 18%)',
+                    borderRadius: '8px',
+                  }}
+                  labelStyle={{ color: 'hsl(210 40% 98%)' }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="ndvi"
+                  stroke="hsl(160 84% 39%)"
+                  strokeWidth={3}
+                  dot={{ fill: 'hsl(160 84% 39%)', strokeWidth: 2 }}
+                  activeDot={{ r: 6, fill: 'hsl(160 84% 39%)' }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
 
       {/* Quick Actions - now based on crop-specific thresholds */}

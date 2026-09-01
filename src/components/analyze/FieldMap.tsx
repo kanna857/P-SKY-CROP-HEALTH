@@ -32,6 +32,10 @@ import {
 } from 'lucide-react';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
+import * as turf from '@turf/turf';
+import { TurfGeospatialMetrics } from '@/lib/types';
+import { MapSplitComparison, TimelinePass, DEFAULT_TIMELINE_PASSES } from './MapSplitComparison';
+import { createPolygonNDVIOverlay, sampleNDVIValue, NDVIPixelSample } from './DynamicNDVIHeatmap';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -113,7 +117,7 @@ interface FieldMapProps {
   ndviTileUrl?: string;
   trueColorUrl?: string;
   affectedArea?: number;
-  onPolygonDrawn?: (geoJson: any) => void;
+  onPolygonDrawn?: (geoJson: any, turfMetrics?: TurfGeospatialMetrics) => void;
 }
 
 interface SearchResult {
@@ -249,6 +253,23 @@ export function FieldMap({
   // Precision Nudge step in meters (approx lat/lng degrees)
   const [nudgeStep, setNudgeStep] = useState<number>(5); // 5 meters
 
+  // Turf.js Instant Geospatial Calculations State
+  const [drawnMetrics, setDrawnMetrics] = useState<TurfGeospatialMetrics | null>(null);
+  const [drawnGeoJson, setDrawnGeoJson] = useState<any | null>(null);
+
+  // Dynamic Canvas NDVI Heatmap State
+  const [showDynamicNdvi, setShowDynamicNdvi] = useState<boolean>(true);
+  const [sampledPixel, setSampledPixel] = useState<NDVIPixelSample | null>(null);
+  const dynamicNdviOverlayRef = useRef<L.ImageOverlay | null>(null);
+  const [customPolygonCoords, setCustomPolygonCoords] = useState<Array<[number, number]> | null>(null);
+
+  // Split-Screen Map Comparison State
+  const [splitComparisonActive, setSplitComparisonActive] = useState<boolean>(false);
+  const [splitSliderPercent, setSplitSliderPercent] = useState<number>(50);
+  const [activeTimelinePass, setActiveTimelinePass] = useState<TimelinePass>(
+    DEFAULT_TIMELINE_PASSES[DEFAULT_TIMELINE_PASSES.length - 1]
+  );
+
   // Initialize Map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -301,10 +322,14 @@ export function FieldMap({
       setCursorCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
     });
 
-    // Click handler for custom location with reverse geocoding
+    // Click handler for custom location with reverse geocoding and live NDVI sampling
     map.current.on('click', async (e: L.LeafletMouseEvent) => {
       const lat = parseFloat(e.latlng.lat.toFixed(7));
       const lng = parseFloat(e.latlng.lng.toFixed(7));
+
+      // Sample NDVI at clicked coordinate
+      const sample = sampleNDVIValue(lat, lng, selectedField?.ndvi || 0.72);
+      setSampledPixel(sample);
 
       const placeName = await fetchAddress(lat, lng);
 
@@ -313,7 +338,7 @@ export function FieldMap({
         name: placeName,
         lat,
         lng,
-        ndvi: Math.random() * 0.4 + 0.4,
+        ndvi: sample.ndvi,
         crop: 'Precision Farm Point',
         area: 10,
         lastAnalysis: new Date().toISOString().split('T')[0],
@@ -336,11 +361,58 @@ export function FieldMap({
       removalMode: true,
     });
 
-    // Handle polygon creation
-    map.current.on('pm:create', (e: any) => {
-      if (onPolygonDrawn) {
-        onPolygonDrawn(e.layer.toGeoJSON());
+    // Turf.js Geospatial calculation processor
+    const processDrawnBoundary = (layer: any) => {
+      try {
+        const geoJson = layer.toGeoJSON();
+        const areaM2 = turf.area(geoJson);
+        const areaHa = parseFloat((areaM2 / 10000).toFixed(2));
+        const acreage = parseFloat((areaM2 / 4046.85642).toFixed(2));
+        const perimeterKm = parseFloat(turf.length(geoJson, { units: 'kilometers' }).toFixed(3));
+        const perimeterM = Math.round(perimeterKm * 1000);
+        const centroidFeat = turf.centroid(geoJson);
+        const [cLng, cLat] = centroidFeat.geometry.coordinates;
+        const bbox = turf.bbox(geoJson) as [number, number, number, number];
+
+        const metrics: TurfGeospatialMetrics = {
+          areaM2: Math.round(areaM2),
+          areaHa,
+          acreage,
+          perimeterKm,
+          perimeterM,
+          centroid: {
+            lat: parseFloat(cLat.toFixed(6)),
+            lng: parseFloat(cLng.toFixed(6)),
+          },
+          bbox,
+        };
+
+        setDrawnMetrics(metrics);
+        setDrawnGeoJson(geoJson);
+
+        if (geoJson.geometry && geoJson.geometry.coordinates && geoJson.geometry.coordinates[0]) {
+          const latLngCoords: Array<[number, number]> = geoJson.geometry.coordinates[0].map(
+            (pt: [number, number]) => [pt[1], pt[0]]
+          );
+          setCustomPolygonCoords(latLngCoords);
+        }
+
+        if (onPolygonDrawn) {
+          onPolygonDrawn(geoJson, metrics);
+        }
+      } catch (err) {
+        console.error('Turf geospatial calculation error:', err);
+        if (onPolygonDrawn) {
+          onPolygonDrawn(layer.toGeoJSON());
+        }
       }
+    };
+
+    // Handle polygon creation and continuous editing
+    map.current.on('pm:create', (e: any) => {
+      processDrawnBoundary(e.layer);
+      e.layer.on('pm:edit', () => processDrawnBoundary(e.layer));
+      e.layer.on('pm:dragend', () => processDrawnBoundary(e.layer));
     });
 
     setMapReady(true);
@@ -574,22 +646,94 @@ export function FieldMap({
     }
   }, [showNdviOverlay, ndviTileUrl, selectedField, mapReady]);
 
+  // Dynamic Canvas NDVI Heatmap Generator clipped directly to drawn polygon or field
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+
+    if (dynamicNdviOverlayRef.current) {
+      dynamicNdviOverlayRef.current.remove();
+      dynamicNdviOverlayRef.current = null;
+    }
+
+    if (!showDynamicNdvi) return;
+
+    let coords: Array<[number, number]> | null = customPolygonCoords;
+
+    if (!coords && selectedField) {
+      const side = Math.sqrt((selectedField.area || 10) * 10000);
+      const latOff = (side / 2) / 111320;
+      const lngOff = (side / 2) / (111320 * Math.cos((selectedField.lat * Math.PI) / 180));
+      coords = [
+        [selectedField.lat - latOff, selectedField.lng - lngOff],
+        [selectedField.lat + latOff, selectedField.lng - lngOff],
+        [selectedField.lat + latOff, selectedField.lng + lngOff],
+        [selectedField.lat - latOff, selectedField.lng + lngOff],
+      ];
+    }
+
+    if (coords && coords.length >= 3) {
+      const baseVal = splitComparisonActive ? activeTimelinePass.meanNdvi : (selectedField?.ndvi ?? 0.74);
+      const { dataUrl, bounds } = createPolygonNDVIOverlay(coords, baseVal, 280);
+
+      if (dataUrl) {
+        const overlay = L.imageOverlay(dataUrl, bounds, {
+          opacity: 0.78,
+          interactive: true,
+        }).addTo(map.current);
+
+        dynamicNdviOverlayRef.current = overlay;
+
+        // Apply clip path if in split comparison mode
+        const el = overlay.getElement();
+        if (el) {
+          if (splitComparisonActive) {
+            el.style.clipPath = `inset(0 0 0 ${splitSliderPercent}%)`;
+          } else {
+            el.style.clipPath = 'none';
+          }
+        }
+      }
+    }
+  }, [customPolygonCoords, selectedField, showDynamicNdvi, mapReady, activeTimelinePass, splitComparisonActive]);
+
+  // Adjust Split-Screen Clip Path dynamically at 60fps
+  useEffect(() => {
+    const el = dynamicNdviOverlayRef.current?.getElement();
+    if (!el) return;
+    if (splitComparisonActive) {
+      el.style.clipPath = `inset(0 0 0 ${splitSliderPercent}%)`;
+    } else {
+      el.style.clipPath = 'none';
+    }
+  }, [splitComparisonActive, splitSliderPercent]);
+
   // CONTINUOUS MULTI-SAMPLE HIGH-ACCURACY GPS TRACKER
   const handleToggleGpsLock = () => {
     if (!map.current) return;
     if (!('geolocation' in navigator)) {
-      alert('Geolocation is not supported by your device or browser.');
+      setGpsMessage('Geolocation is not supported by your device or browser.');
+      setTimeout(() => setGpsMessage(null), 3500);
       return;
     }
 
     if (isWatchingGps) {
-      // Stop GPS watcher
+      // Stop GPS watcher cleanly
       if (watchPositionIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchPositionIdRef.current);
         watchPositionIdRef.current = null;
       }
+      if (gpsAccuracyCircleRef.current) {
+        gpsAccuracyCircleRef.current.remove();
+        gpsAccuracyCircleRef.current = null;
+      }
       setIsWatchingGps(false);
+      setIsLocating(false);
+      setGpsAccuracy(null);
       setGpsMessage('GPS watching paused.');
+      // Auto-dismiss the paused banner after 2.5 seconds
+      setTimeout(() => {
+        setGpsMessage((prev) => (prev === 'GPS watching paused.' ? null : prev));
+      }, 2500);
       return;
     }
 
@@ -655,13 +799,19 @@ export function FieldMap({
         setIsLocating(false);
         setIsWatchingGps(false);
         setGpsAccuracy(null);
+        if (gpsAccuracyCircleRef.current) {
+          gpsAccuracyCircleRef.current.remove();
+          gpsAccuracyCircleRef.current = null;
+        }
         console.error('GPS Watch error:', error);
         let msg = 'Unable to get GPS location. Check browser location permissions.';
         if (error.code === error.PERMISSION_DENIED) {
-          msg = 'GPS permission denied. Please enable Location in your browser / Windows settings.';
+          msg = 'GPS permission denied. Please enable Location in browser / device settings.';
         }
         setGpsMessage(msg);
-        alert(msg);
+        setTimeout(() => {
+          setGpsMessage(null);
+        }, 4000);
       },
       { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 }
     );
@@ -1039,6 +1189,28 @@ export function FieldMap({
             </Button>
           )}
 
+          {/* Split-Screen Slider Comparison Button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={splitComparisonActive ? 'default' : 'secondary'}
+                size="icon"
+                onClick={() => setSplitComparisonActive(!splitComparisonActive)}
+                className={`glass-card shadow-lg backdrop-blur-md border border-border/80 ${
+                  splitComparisonActive
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.5)]'
+                    : 'bg-background/95'
+                }`}
+                title="Split-Screen Map Swipe Comparison"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p className="text-xs font-semibold">Side-by-Side Timeline Swipe Comparison</p>
+            </TooltipContent>
+          </Tooltip>
+
           {/* Reset View */}
           <Button
             variant="secondary"
@@ -1054,20 +1226,29 @@ export function FieldMap({
         {/* GPS ACCURACY & STATUS BADGE */}
         {gpsMessage && (
           <div className="absolute top-16 left-4 z-[1000] animate-fade-in max-w-md">
-            <div className="glass-card bg-background/98 backdrop-blur-md px-3.5 py-2 rounded-lg border border-primary/50 shadow-2xl flex items-center gap-2.5">
-              {isLocating ? (
-                <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
-              ) : gpsAccuracy !== null ? (
-                <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-              ) : (
-                <Navigation className="w-4 h-4 text-primary shrink-0" />
-              )}
-              <span className="text-xs font-semibold text-foreground truncate">{gpsMessage}</span>
-              {gpsAccuracy !== null && (
-                <Badge variant="outline" className={`text-[10px] font-bold py-0.5 px-2 ${gpsAccuracy <= 10 ? 'border-success text-success bg-success/15' : 'border-amber-500 text-amber-400 bg-amber-500/15'}`}>
-                  ±{gpsAccuracy}m
-                </Badge>
-              )}
+            <div className="glass-card bg-background/98 backdrop-blur-md px-3.5 py-2 rounded-lg border border-primary/50 shadow-2xl flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                {isLocating ? (
+                  <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+                ) : gpsAccuracy !== null ? (
+                  <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+                ) : (
+                  <Navigation className="w-4 h-4 text-primary shrink-0" />
+                )}
+                <span className="text-xs font-semibold text-foreground truncate">{gpsMessage}</span>
+                {gpsAccuracy !== null && (
+                  <Badge variant="outline" className={`text-[10px] font-bold py-0.5 px-2 shrink-0 ${gpsAccuracy <= 10 ? 'border-success text-success bg-success/15' : 'border-amber-500 text-amber-400 bg-amber-500/15'}`}>
+                    ±{gpsAccuracy}m
+                  </Badge>
+                )}
+              </div>
+              <button
+                onClick={() => setGpsMessage(null)}
+                className="text-muted-foreground hover:text-foreground p-0.5 rounded transition-colors shrink-0 ml-1"
+                title="Dismiss message"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         )}
@@ -1130,15 +1311,132 @@ export function FieldMap({
           </div>
         </div>
 
-        {/* INSTRUCTIONS & SHORTCUTS (BOTTOM LEFT) */}
-        <div className="absolute bottom-4 left-24 z-[1000] hidden sm:block">
-          <div className="glass-card bg-background/95 backdrop-blur-md px-3.5 py-1.5 rounded-lg border border-border/60 shadow-xl">
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-              <span>Click to drop pin | Drag pin to fine-tune | Search village / coordinates</span>
-            </p>
+        {/* TURF.JS INSTANT GEOSPATIAL BOUNDARY HUD */}
+        {drawnMetrics && (
+          <div className="absolute top-20 left-4 z-[1000] animate-in fade-in slide-in-from-top-2 max-w-sm">
+            <div className="glass-card bg-[#0a121e]/95 backdrop-blur-xl p-4 rounded-2xl border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.3)] space-y-2.5 text-white">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                    <Target className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs">Turf.js Precision Boundary</h4>
+                    <p className="text-[10px] text-gray-400">Client-Side Geodesic Geometry</p>
+                  </div>
+                </div>
+                <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px]">
+                  Active Boundary
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div className="bg-white/5 p-2 rounded-xl border border-white/5">
+                  <span className="text-[10px] text-gray-400 block">Total Area</span>
+                  <span className="font-bold text-emerald-400 text-sm">
+                    {drawnMetrics.acreage} <span className="text-[11px] text-white">Acres</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400 block mt-0.5">({drawnMetrics.areaHa} ha)</span>
+                </div>
+
+                <div className="bg-white/5 p-2 rounded-xl border border-white/5">
+                  <span className="text-[10px] text-gray-400 block">Perimeter</span>
+                  <span className="font-bold text-cyan-300 text-sm">
+                    {drawnMetrics.perimeterKm} <span className="text-[11px] text-white">km</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400 block mt-0.5">({drawnMetrics.perimeterM} m)</span>
+                </div>
+              </div>
+
+              <div className="text-[10px] font-mono text-gray-300 bg-white/5 px-2.5 py-1.5 rounded-xl flex items-center justify-between border border-white/5">
+                <span className="text-gray-400">Centroid:</span>
+                <span className="text-emerald-300 font-bold">
+                  {drawnMetrics.centroid.lat.toFixed(5)}°, {drawnMetrics.centroid.lng.toFixed(5)}°
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 pt-0.5">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (drawnGeoJson && onPolygonDrawn) {
+                      onPolygonDrawn(drawnGeoJson, drawnMetrics);
+                    }
+                  }}
+                  className="w-full h-8 text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black rounded-xl shadow-md"
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1" />
+                  Analyze Boundary
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDrawnMetrics(null)}
+                  className="h-8 text-xs text-gray-400 hover:text-white border-white/10"
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DYNAMIC CANVAS NDVI COLORMAP LEGEND & PIXEL INSPECTION */}
+        <div className="absolute bottom-4 left-4 z-[990] max-w-xs pointer-events-auto">
+          <div className="glass-card bg-[#0a121e]/95 backdrop-blur-xl p-3 rounded-2xl border border-white/15 shadow-2xl text-white space-y-1.5">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-bold flex items-center gap-1.5 text-emerald-300 font-display">
+                <Leaf className="w-3.5 h-3.5 text-emerald-400" />
+                NDVI Heatmap Colormap
+              </span>
+              <button
+                onClick={() => setShowDynamicNdvi(!showDynamicNdvi)}
+                className="text-[10px] text-gray-400 hover:text-white underline font-mono"
+              >
+                {showDynamicNdvi ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            <div className="h-2 rounded-full overflow-hidden flex shadow-inner bg-black/60">
+              <div className="flex-1 bg-[#ef4444]" title="0.0 - 0.25: Bare Soil / Rock" />
+              <div className="flex-1 bg-[#f59e0b]" title="0.25 - 0.45: Early Crop Stress" />
+              <div className="flex-1 bg-[#84cc16]" title="0.45 - 0.65: Moderate Vegetative" />
+              <div className="flex-1 bg-[#22c55e]" title="0.65 - 0.82: Healthy Canopy" />
+              <div className="flex-1 bg-[#15803d]" title="0.82 - 1.00: Dense Biomass" />
+            </div>
+
+            <div className="flex justify-between text-[9px] font-mono text-gray-400">
+              <span className="text-red-400">0.0 (Bare)</span>
+              <span>0.35</span>
+              <span>0.65</span>
+              <span className="text-emerald-400">1.0 (Dense)</span>
+            </div>
+
+            {sampledPixel && (
+              <div className="mt-1 pt-1.5 border-t border-white/10 text-[10px] space-y-0.5 animate-in fade-in">
+                <div className="flex items-center justify-between font-mono">
+                  <span className="text-gray-400">Sampled Point:</span>
+                  <span className="font-bold text-emerald-300" style={{ color: sampledPixel.color }}>
+                    {sampledPixel.ndvi} ({sampledPixel.label.split(' ')[0]})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-gray-400 font-mono text-[9px]">
+                  <span>Est. Chlorophyll:</span>
+                  <span className="text-white font-semibold">{sampledPixel.chlorophyllEstimate}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* MAP SPLIT-SCREEN / TIMELINE SWIPE COMPARISON OVERLAY */}
+        <MapSplitComparison
+          mapContainerRef={mapContainer}
+          enabled={splitComparisonActive}
+          onToggle={setSplitComparisonActive}
+          onSliderPositionChange={(pct) => setSplitSliderPercent(pct)}
+          onSelectedDateChange={(pass) => setActiveTimelinePass(pass)}
+        />
       </div>
     </TooltipProvider>
   );

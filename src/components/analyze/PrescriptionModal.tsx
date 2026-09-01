@@ -42,6 +42,9 @@ export interface PrescriptionData {
   severityStage?: string;
   farmerName?: string;
   fieldName?: string;
+  farmName?: string;
+  date?: string;
+  acreage?: number;
 }
 
 interface PrescriptionModalProps {
