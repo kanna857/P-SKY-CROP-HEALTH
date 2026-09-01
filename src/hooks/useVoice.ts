@@ -20,38 +20,105 @@ export const SUPPORTED_LANGUAGES: VoiceLanguage[] = [
 
 interface UseVoiceOptions {
   language: string;
-  onResult: (transcript: string) => void;
+  onResult: (transcript: string, isFinal?: boolean) => void;
 }
 
 export function useVoice({ language, onResult }: UseVoiceOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
   const recognitionRef = useRef<any>(null);
   const levelIntervalRef = useRef<any>(null);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback(async () => {
+    setVoiceError(null);
+    setLiveTranscript('');
+
+    // 1. Explicitly request microphone access if mediaDevices is available
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Close stream immediately so SpeechRecognition can take exclusive control of microphone
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err: any) {
+        console.warn('Microphone access issue:', err);
+        const msg = 'Microphone access was denied or not found. Please enable microphone permissions in your browser address bar.';
+        setVoiceError(msg);
+        alert(msg);
+        return;
+      }
+    }
+
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
+      const msg = 'Speech recognition is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Safari.';
+      setVoiceError(msg);
+      alert(msg);
       return;
     }
 
     try {
+      // Abort any existing instance
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+
       const recognition = new SpeechRecognition();
-      recognition.lang = language;
+      recognition.lang = language || 'en-IN';
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
-      recognition.continuous = false;
+      recognition.continuous = true;
 
       recognition.onstart = () => {
         setIsListening(true);
-        // Simulate animated audio waveform levels while listening
+        setVoiceError(null);
+        if (levelIntervalRef.current) clearInterval(levelIntervalRef.current);
         levelIntervalRef.current = setInterval(() => {
           setAudioLevel(Math.random() * 0.8 + 0.2);
         }, 100);
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimText = '';
+        let finalText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            finalText += result[0].transcript;
+          } else {
+            interimText += result[0].transcript;
+          }
+        }
+
+        const currentSpoken = (finalText || interimText).trim();
+        if (currentSpoken) {
+          setLiveTranscript(currentSpoken);
+          onResult(currentSpoken, !!finalText);
+        }
+      };
+
+      recognition.onerror = (e: any) => {
+        console.warn('Speech recognition status:', e?.error);
+        if (e?.error === 'not-allowed') {
+          setVoiceError('Microphone permission blocked. Click the lock/settings icon in your address bar to allow.');
+        } else if (e?.error === 'no-speech') {
+          // No speech detected yet, keep listening or finish gently
+        } else if (e?.error === 'audio-capture') {
+          setVoiceError('No microphone detected on your system. Please plug in a microphone.');
+        }
+        if (e?.error !== 'no-speech') {
+          setIsListening(false);
+          setAudioLevel(0);
+          if (levelIntervalRef.current) clearInterval(levelIntervalRef.current);
+        }
       };
 
       recognition.onend = () => {
@@ -60,27 +127,11 @@ export function useVoice({ language, onResult }: UseVoiceOptions) {
         if (levelIntervalRef.current) clearInterval(levelIntervalRef.current);
       };
 
-      recognition.onerror = (e: any) => {
-        console.warn('Speech recognition notice:', e?.error);
-        setIsListening(false);
-        setAudioLevel(0);
-        if (levelIntervalRef.current) clearInterval(levelIntervalRef.current);
-      };
-
-      recognition.onresult = (event: any) => {
-        const lastResult = event.results[event.results.length - 1];
-        if (lastResult && lastResult[0]) {
-          const transcript = lastResult[0].transcript;
-          if (lastResult.isFinal) {
-            onResult(transcript);
-          }
-        }
-      };
-
       recognitionRef.current = recognition;
       recognition.start();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error starting recognition:', err);
+      setVoiceError(err.message || 'Error activating microphone.');
       setIsListening(false);
     }
   }, [language, onResult]);
@@ -114,13 +165,15 @@ export function useVoice({ language, onResult }: UseVoiceOptions) {
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.lang = language;
-      utterance.rate = 0.92;
+      utterance.lang = language || 'en-IN';
+      utterance.rate = 0.95;
       utterance.pitch = 1.0;
 
       const voices = window.speechSynthesis.getVoices();
       const match = voices.find(
-        (v) => v.lang.toLowerCase() === language.toLowerCase() || v.lang.startsWith(language.split('-')[0])
+        (v) =>
+          v.lang.toLowerCase() === (language || '').toLowerCase() ||
+          v.lang.startsWith((language || 'en').split('-')[0])
       );
       if (match) utterance.voice = match;
 
@@ -143,6 +196,11 @@ export function useVoice({ language, onResult }: UseVoiceOptions) {
   useEffect(() => {
     return () => {
       if (levelIntervalRef.current) clearInterval(levelIntervalRef.current);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
@@ -153,6 +211,8 @@ export function useVoice({ language, onResult }: UseVoiceOptions) {
     isListening,
     isSpeaking,
     audioLevel,
+    liveTranscript,
+    voiceError,
     startListening,
     stopListening,
     speak,

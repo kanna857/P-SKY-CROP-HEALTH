@@ -19,7 +19,9 @@ import {
   Radio,
   ShieldCheck,
   Search,
-  MessageSquare
+  MessageSquare,
+  TrendingUp,
+  Phone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -87,6 +89,26 @@ const navItems: NavItem[] = [
     activeGradient: 'from-sky-500/30 via-blue-500/20 to-sky-500/5',
     activeBorder: 'border-sky-400',
     glow: 'shadow-[0_0_25px_rgba(56,189,248,0.35)]'
+  },
+  { 
+    href: '/yield-market', 
+    label: 'Yield & Mandi Profit', 
+    icon: TrendingUp, 
+    color: 'text-amber-400', 
+    iconBg: 'bg-amber-500/15 border-amber-500/30 text-amber-300',
+    activeGradient: 'from-amber-500/30 via-yellow-500/20 to-amber-500/5',
+    activeBorder: 'border-amber-400',
+    glow: 'shadow-[0_0_25px_rgba(245,158,11,0.35)]'
+  },
+  { 
+    href: '/hotline', 
+    label: 'Kisan Voice Hotline', 
+    icon: Phone, 
+    color: 'text-rose-400', 
+    iconBg: 'bg-rose-500/15 border-rose-500/30 text-rose-300',
+    activeGradient: 'from-rose-500/30 via-red-500/20 to-rose-500/5',
+    activeBorder: 'border-rose-400',
+    glow: 'shadow-[0_0_25px_rgba(244,63,94,0.35)]'
   },
   { 
     href: '/dashboard', 

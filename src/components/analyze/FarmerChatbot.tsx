@@ -49,7 +49,7 @@ export function FarmerChatbot({ field, weather }: FarmerChatbotProps) {
     setInput(transcript);
   }, []);
 
-  const { isListening, isSpeaking, startListening, stopListening, speak, stopSpeaking } =
+  const { isListening, isSpeaking, liveTranscript, voiceError, startListening, stopListening, speak, stopSpeaking } =
     useVoice({ language: selectedLang.code, onResult: handleVoiceResult });
 
   useEffect(() => {
@@ -256,13 +256,31 @@ export function FarmerChatbot({ field, weather }: FarmerChatbotProps) {
         </div>
       </ScrollArea>
 
-      {/* Voice Status Bar */}
+      {/* Voice Status Bar with Live Hearing Feedback */}
       {isListening && (
-        <div className="px-4 py-2 bg-red-500/10 border-t border-red-500/20 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-xs text-red-400 font-medium">
-            Listening in {selectedLang.label}... speak now
-          </span>
+        <div className="px-4 py-2 bg-red-500/15 border-t border-red-500/30 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping shrink-0" />
+            <span className="text-xs text-red-300 font-semibold font-mono truncate">
+              {liveTranscript ? `Hearing: "${liveTranscript}"` : `Listening in ${selectedLang.label}... Speak clearly into your mic`}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              stopListening();
+              if (input.trim()) handleSend(input);
+            }}
+            className="text-[11px] h-6 px-2.5 text-red-300 hover:text-white hover:bg-red-500/20 shrink-0 font-mono font-bold"
+          >
+            Send Spoken Query
+          </Button>
+        </div>
+      )}
+      {voiceError && (
+        <div className="px-4 py-1.5 bg-amber-500/15 border-t border-amber-500/30 flex items-center gap-2 text-xs text-amber-300 font-mono">
+          <span>⚠️ {voiceError}</span>
         </div>
       )}
       {isSpeaking && (
