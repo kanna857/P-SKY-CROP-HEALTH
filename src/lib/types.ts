@@ -247,7 +247,7 @@ export function generateNDVIData(baseNDVI: number): NDVIData {
   };
 }
 
-export type SpectralIndexType = 'NDVI' | 'EVI' | 'SAVI' | 'NDWI' | 'NDRE';
+export type SpectralIndexType = 'NDVI' | 'EVI' | 'SAVI' | 'MSAVI' | 'NDWI' | 'NDRE' | 'THERMAL';
 
 export interface SpectralIndexInfo {
   type: SpectralIndexType;
@@ -287,6 +287,15 @@ export const SPECTRAL_INDICES: Record<SpectralIndexType, SpectralIndexInfo> = {
     optimalRange: '0.40 - 0.70',
     palette: 'from-orange-500 via-amber-300 to-emerald-600',
   },
+  MSAVI: {
+    type: 'MSAVI',
+    name: 'MSAVI',
+    fullName: 'Modified Soil-Adjusted Vegetation Index',
+    formula: '(2*NIR + 1 - sqrt((2*NIR + 1)^2 - 8*(NIR - Red))) / 2',
+    description: 'Minimizes soil brightness effects in seedling and sparse emerging canopy stages.',
+    optimalRange: '0.40 - 0.75',
+    palette: 'from-amber-600 via-yellow-400 to-emerald-500',
+  },
   NDWI: {
     type: 'NDWI',
     name: 'NDWI',
@@ -304,6 +313,15 @@ export const SPECTRAL_INDICES: Record<SpectralIndexType, SpectralIndexInfo> = {
     description: 'Measures leaf chlorophyll concentration and precise nitrogen fertilizer demand.',
     optimalRange: '0.35 - 0.65',
     palette: 'from-rose-500 via-yellow-300 to-teal-500',
+  },
+  THERMAL: {
+    type: 'THERMAL',
+    name: 'THERMAL',
+    fullName: 'Thermal Evapotranspiration & Hotspot Index',
+    formula: 'T_canopy (°C) FLIR Radiometric Thermal Proxy',
+    description: 'Directly detects transpiration shutdown, localized stomatal closure, and root-zone water deficit.',
+    optimalRange: '21°C - 26°C (Cool Canopy)',
+    palette: 'from-purple-900 via-blue-500 via-amber-400 to-red-600',
   },
 };
 

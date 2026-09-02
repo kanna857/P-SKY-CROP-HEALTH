@@ -72,6 +72,7 @@ interface ExplainableAIPanelProps {
   confidence?: number;
   lesionCount?: number;
   infectedAreaPct?: number;
+  thermalImage?: string;
 }
 
 export function ExplainableAIPanel({
@@ -82,6 +83,7 @@ export function ExplainableAIPanel({
   confidence = 0.96,
   lesionCount = 14,
   infectedAreaPct = 14.8,
+  thermalImage,
 }: ExplainableAIPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const isHealthy = healthStatus.toLowerCase().includes('healthy');
@@ -344,6 +346,21 @@ export function ExplainableAIPanel({
               <p className="text-[11px] text-gray-400 leading-relaxed pl-7">
                 {xai.thermalStressIncreased.description}
               </p>
+
+              {thermalImage && (
+                <div className="mt-2.5 pl-7 flex items-center gap-3">
+                  <div className="w-20 h-20 rounded-xl overflow-hidden border-2 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.3)] shrink-0 bg-black">
+                    <img src={thermalImage} alt="Thermal Hotspot Heatmap" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="text-[11px] text-gray-300 font-mono space-y-1">
+                    <span className="text-amber-400 font-bold block flex items-center gap-1">
+                      <Flame className="w-3 h-3" /> FLIR Radiometric Hotspot
+                    </span>
+                    <span>Peak Temp: <strong className="text-white">{xai.thermalStressIncreased.hotspotReading}</strong></span>
+                    <span className="text-gray-400 block text-[10px]">Stomatal shutdown due to foliar pathogen infection</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

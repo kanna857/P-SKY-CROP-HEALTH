@@ -540,6 +540,8 @@ const AnalyzePage = () => {
                     trueColorUrl={realNdviData?.trueColorUrl}
                     affectedArea={areaRange[0]}
                     onPolygonDrawn={handlePolygonDrawn}
+                    activeSpectralMode={activeSpectralMode}
+                    onSpectralModeChange={setActiveSpectralMode}
                   />
                 </Suspense>
 
@@ -891,7 +893,11 @@ const AnalyzePage = () => {
 
             {selectedField && (
               <div className="hud-panel hud-bracket p-1 rounded-2xl overflow-hidden">
-                <NDVIOverlay field={selectedField} />
+                <NDVIOverlay
+                  field={selectedField}
+                  activeSpectralMode={activeSpectralMode}
+                  onSpectralModeChange={setActiveSpectralMode}
+                />
               </div>
             )}
 

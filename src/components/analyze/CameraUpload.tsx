@@ -1286,6 +1286,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
               confidence={diagnosis.rawConfidence ?? (displayConfidence / 100)}
               lesionCount={diagnosis.lesionCount}
               infectedAreaPct={diagnosis.infectedAreaPct}
+              thermalImage={getActiveThermalSource() || diagnosis.thermalIronbow || diagnosis.thermalJet}
             />
 
             {/* CROP RISK SCORE: MULTI-FACTOR WEIGHTED RISK MODEL (Image 1) */}

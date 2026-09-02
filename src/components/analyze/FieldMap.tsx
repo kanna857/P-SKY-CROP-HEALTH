@@ -28,7 +28,8 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Target
+  Target,
+  Flame
 } from 'lucide-react';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
@@ -118,6 +119,8 @@ interface FieldMapProps {
   trueColorUrl?: string;
   affectedArea?: number;
   onPolygonDrawn?: (geoJson: any, turfMetrics?: TurfGeospatialMetrics) => void;
+  activeSpectralMode?: 'NDVI' | 'NDRE' | 'EVI' | 'MSAVI' | 'NDWI' | 'THERMAL';
+  onSpectralModeChange?: (mode: 'NDVI' | 'NDRE' | 'EVI' | 'MSAVI' | 'NDWI' | 'THERMAL') => void;
 }
 
 interface SearchResult {
@@ -353,6 +356,8 @@ export function FieldMap({
   trueColorUrl,
   affectedArea,
   onPolygonDrawn,
+  activeSpectralMode = 'NDVI',
+  onSpectralModeChange,
 }: FieldMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -470,8 +475,8 @@ export function FieldMap({
       const lat = parseFloat(e.latlng.lat.toFixed(7));
       const lng = parseFloat(e.latlng.lng.toFixed(7));
 
-      // Sample NDVI at clicked coordinate
-      const sample = sampleNDVIValue(lat, lng, selectedField?.ndvi || 0.72);
+      // Sample spectral/thermal value at clicked coordinate
+      const sample = sampleNDVIValue(lat, lng, selectedField?.ndvi || 0.72, activeSpectralMode);
       setSampledPixel(sample);
 
       const placeName = await fetchAddress(lat, lng);
@@ -835,11 +840,11 @@ export function FieldMap({
 
     if (coords && coords.length >= 3) {
       const baseVal = splitComparisonActive ? activeTimelinePass.meanNdvi : (selectedField?.ndvi ?? 0.74);
-      const { dataUrl, bounds } = createPolygonNDVIOverlay(coords, baseVal, 280);
+      const { dataUrl, bounds } = createPolygonNDVIOverlay(coords, baseVal, 280, activeSpectralMode);
 
       if (dataUrl) {
         const overlay = L.imageOverlay(dataUrl, bounds, {
-          opacity: 0.78,
+          opacity: activeSpectralMode === 'THERMAL' ? 0.84 : 0.78,
           interactive: true,
         }).addTo(map.current);
 
@@ -856,7 +861,7 @@ export function FieldMap({
         }
       }
     }
-  }, [customPolygonCoords, selectedField, showDynamicNdvi, mapReady, activeTimelinePass, splitComparisonActive]);
+  }, [customPolygonCoords, selectedField, showDynamicNdvi, mapReady, activeTimelinePass, splitComparisonActive, activeSpectralMode]);
 
   // Adjust Split-Screen Clip Path dynamically at 60fps
   useEffect(() => {
@@ -1417,6 +1422,33 @@ export function FieldMap({
             </TooltipContent>
           </Tooltip>
 
+          {/* FLIR Radiometric Thermal Heatmap Button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={activeSpectralMode === 'THERMAL' ? 'default' : 'secondary'}
+                size="icon"
+                onClick={() => {
+                  const nextMode = activeSpectralMode === 'THERMAL' ? 'NDVI' : 'THERMAL';
+                  if (onSpectralModeChange) onSpectralModeChange(nextMode);
+                }}
+                className={`glass-card shadow-lg backdrop-blur-md border border-border/80 transition-all ${
+                  activeSpectralMode === 'THERMAL'
+                    ? 'bg-gradient-to-r from-amber-500 to-red-600 text-black shadow-[0_0_20px_rgba(245,158,11,0.6)] animate-pulse'
+                    : 'bg-background/95 hover:text-amber-400'
+                }`}
+                title="Toggle FLIR Radiometric Thermal Heatmap"
+              >
+                <Flame className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p className="text-xs font-semibold font-mono">
+                {activeSpectralMode === 'THERMAL' ? 'Thermal FLIR Active (Tap for NDVI)' : 'Switch to FLIR Radiometric Thermal Heatmap'}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+
           {/* Reset View */}
           <Button
             variant="secondary"
@@ -1448,18 +1480,12 @@ export function FieldMap({
                   </Badge>
                 )}
               </div>
-              <button
-                onClick={() => setGpsMessage(null)}
-                className="text-muted-foreground hover:text-foreground p-0.5 rounded transition-colors shrink-0 ml-1"
-                title="Dismiss message"
-              >
+              <button onClick={() => setGpsMessage(null)} className="text-muted-foreground hover:text-foreground">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         )}
-
-
 
         {/* LIVE HIGH-PRECISION COORDINATES HUD (BOTTOM RIGHT) */}
         <div className="absolute bottom-4 right-16 z-[1000] hidden md:flex items-center gap-2">
@@ -1484,19 +1510,14 @@ export function FieldMap({
           </div>
         </div>
 
-        {/* TURF.JS INSTANT GEOSPATIAL BOUNDARY HUD */}
+        {/* TURF.JS DRAWN BOUNDARY METRICS PANEL */}
         {drawnMetrics && (
-          <div className="absolute top-20 left-4 z-[1000] animate-in fade-in slide-in-from-top-2 max-w-sm">
-            <div className="glass-card bg-[#0a121e]/95 backdrop-blur-xl p-4 rounded-2xl border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.3)] space-y-2.5 text-white">
+          <div className="absolute top-16 right-4 z-[1000] animate-fade-in max-w-xs pointer-events-auto">
+            <div className="glass-card bg-[#0a121e]/95 backdrop-blur-xl p-3.5 rounded-2xl border border-emerald-500/40 shadow-2xl text-white space-y-2.5">
               <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
-                    <Target className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-xs">Turf.js Precision Boundary</h4>
-                    <p className="text-[10px] text-gray-400">Client-Side Geodesic Geometry</p>
-                  </div>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 font-mono">
+                  <Target className="w-4 h-4 animate-spin" style={{ animationDuration: '8s' }} />
+                  <span>FIELD SURVEY METRICS</span>
                 </div>
                 <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px]">
                   Active Boundary
@@ -1554,42 +1575,81 @@ export function FieldMap({
           </div>
         )}
 
-        {/* COMPACT NDVI HEATMAP LEGEND PILL */}
+        {/* DYNAMIC SPECTRAL & FLIR THERMAL HEATMAP LEGEND PILL */}
         <div className="absolute bottom-4 left-4 z-[990] pointer-events-auto">
-          <div className="glass-card bg-[#0a121e]/90 backdrop-blur-xl px-3 py-2 rounded-xl border border-white/10 shadow-lg text-white space-y-1.5 w-56">
+          <div className="glass-card bg-[#0a121e]/95 backdrop-blur-xl px-3.5 py-2.5 rounded-2xl border border-white/10 shadow-2xl text-white space-y-2 w-64 font-mono">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="font-semibold flex items-center gap-1.5 text-emerald-400">
-                <Leaf className="w-3.5 h-3.5" />
-                NDVI Colormap
-              </span>
+              {activeSpectralMode === 'THERMAL' ? (
+                <span className="font-bold flex items-center gap-1.5 text-amber-400">
+                  <Flame className="w-4 h-4 animate-pulse" />
+                  FLIR Thermal Heatmap
+                </span>
+              ) : activeSpectralMode === 'NDWI' ? (
+                <span className="font-bold flex items-center gap-1.5 text-cyan-400">
+                  <Droplets className="w-4 h-4" />
+                  NDWI Moisture Map
+                </span>
+              ) : (
+                <span className="font-bold flex items-center gap-1.5 text-emerald-400">
+                  <Leaf className="w-3.5 h-3.5" />
+                  {activeSpectralMode} Spectral Vigor
+                </span>
+              )}
               <button
                 onClick={() => setShowDynamicNdvi(!showDynamicNdvi)}
-                className="text-[10px] text-gray-400 hover:text-white transition-colors font-mono"
+                className="text-[10px] text-gray-400 hover:text-white transition-colors"
               >
                 {showDynamicNdvi ? 'Hide' : 'Show'}
               </button>
             </div>
 
-            <div className="h-1.5 rounded-full overflow-hidden flex bg-black/60 shadow-inner">
-              <div className="flex-1 bg-[#ef4444]" title="0.0 - 0.25: Bare" />
-              <div className="flex-1 bg-[#f59e0b]" title="0.25 - 0.45: Stress" />
-              <div className="flex-1 bg-[#84cc16]" title="0.45 - 0.65: Moderate" />
-              <div className="flex-1 bg-[#22c55e]" title="0.65 - 0.82: Healthy" />
-              <div className="flex-1 bg-[#15803d]" title="0.82 - 1.00: Dense" />
-            </div>
-
-            <div className="flex justify-between text-[8px] font-mono text-gray-400">
-              <span className="text-red-400">0.0 Bare</span>
-              <span>0.50</span>
-              <span className="text-emerald-400">1.0 Dense</span>
-            </div>
+            {/* Gradient Bar: FLIR Ironbow vs Agricultural Color Scale */}
+            {activeSpectralMode === 'THERMAL' ? (
+              <>
+                <div className="h-2 rounded-full overflow-hidden flex bg-black/60 border border-white/20 shadow-inner bg-gradient-to-r from-[#120c5f] via-[#670ca0] via-[#00a8cc] via-[#f59e0b] via-[#ef4444] to-[#ffffff]" />
+                <div className="flex justify-between text-[8px] font-mono text-gray-300">
+                  <span className="text-cyan-400 font-bold">21°C Cool</span>
+                  <span className="text-amber-300">28°C Normal</span>
+                  <span className="text-rose-400 font-bold">38°C+ Hotspot</span>
+                </div>
+              </>
+            ) : activeSpectralMode === 'NDWI' ? (
+              <>
+                <div className="h-2 rounded-full overflow-hidden flex bg-black/60 shadow-inner bg-gradient-to-r from-rose-500 via-amber-400 via-emerald-400 via-cyan-400 to-blue-600" />
+                <div className="flex justify-between text-[8px] font-mono text-gray-300">
+                  <span className="text-rose-400">Drought</span>
+                  <span>Adequate</span>
+                  <span className="text-blue-400">High Water</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="h-2 rounded-full overflow-hidden flex bg-black/60 shadow-inner">
+                  <div className="flex-1 bg-[#ef4444]" title="0.0 - 0.40: Severe Risk" />
+                  <div className="flex-1 bg-[#f97316]" title="0.40 - 0.55: Moderate Risk" />
+                  <div className="flex-1 bg-[#eab308]" title="0.55 - 0.70: Warning" />
+                  <div className="flex-1 bg-[#10b981]" title="0.70 - 1.00: Optimal Vigor" />
+                </div>
+                <div className="flex justify-between text-[8px] font-mono text-gray-400">
+                  <span className="text-red-400">0.0 Bare</span>
+                  <span>0.55</span>
+                  <span className="text-emerald-400">1.0 Dense</span>
+                </div>
+              </>
+            )}
 
             {sampledPixel && (
-              <div className="pt-1 border-t border-white/10 text-[9px] flex items-center justify-between font-mono">
-                <span className="text-gray-400">Sample:</span>
-                <span className="font-bold" style={{ color: sampledPixel.color }}>
-                  {sampledPixel.ndvi} ({sampledPixel.label.split(' ')[0]})
-                </span>
+              <div className="pt-1.5 border-t border-white/10 text-[10px] flex items-center justify-between">
+                <span className="text-gray-400">Point Sample:</span>
+                {activeSpectralMode === 'THERMAL' && sampledPixel.thermalTempC ? (
+                  <span className="font-bold text-amber-400">
+                    {sampledPixel.thermalTempC}°C ({sampledPixel.thermalAnomalyText})
+                  </span>
+                ) : (
+                  <span className="font-bold" style={{ color: sampledPixel.color }}>
+                    {sampledPixel.ndvi} ({sampledPixel.tierLabel})
+                  </span>
+                )}
               </div>
             )}
           </div>
