@@ -102,40 +102,44 @@ export function FeaturesSection() {
 
         {/* Features Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature) => {
+          {features.map((feature, idx) => {
             const Icon = feature.icon;
             return (
               <div
                 key={feature.title}
-                className={`p-6 rounded-3xl bg-[#0c1422]/85 border border-white/10 ${feature.cardBorder} transition-all duration-300 flex flex-col justify-between shadow-xl hover:-translate-y-1 backdrop-blur-2xl group`}
+                className={`hud-panel hud-bracket p-6 flex flex-col justify-between shadow-2xl hover:-translate-y-1.5 transition-all duration-300 group border border-white/10 ${feature.cardBorder}`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${feature.iconStyle} group-hover:scale-110 transition-transform shadow-md`}>
                       <Icon className="w-6 h-6" />
                     </div>
-                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${feature.badgeStyle}`}>
-                      {feature.badge}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-gray-400">0{idx + 1}</span>
+                      <span className={`text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${feature.badgeStyle}`}>
+                        {feature.badge}
+                      </span>
+                    </div>
                   </div>
 
                   <h3 className="font-display text-lg font-bold mb-2 text-white group-hover:text-emerald-400 transition-colors">
                     {feature.title}
                   </h3>
 
-                  <p className="text-xs md:text-sm text-gray-300 leading-relaxed">
+                  <p className="text-xs md:text-sm text-gray-300 leading-relaxed font-mono">
                     {feature.description}
                   </p>
                 </div>
 
-                <div className="pt-5 mt-4 border-t border-white/10">
+                <div className="pt-5 mt-4 border-t border-white/10 flex items-center justify-between font-mono">
                   <Link
                     to={feature.link}
                     className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 group-hover:gap-2.5 transition-all"
                   >
-                    <span>Launch Module</span>
+                    <span>INITIALIZE TELEMETRY</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 opacity-60 group-hover:opacity-100 group-hover:animate-ping" />
                 </div>
               </div>
             );

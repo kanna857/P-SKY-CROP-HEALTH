@@ -119,55 +119,55 @@ const DashboardPage = () => {
         {/* 4 Multi-Color Glowing Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Emerald Average NDVI */}
-          <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-900/35 via-[#081320]/95 to-[#0b1624]/95 border border-emerald-500/40 border-t-4 border-t-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.3)] hover:-translate-y-1 transition-all duration-300 group backdrop-blur-2xl">
+          <div className="hud-panel hud-bracket p-5 border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.25)] hover:border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.35)] hover:-translate-y-1 transition-all duration-300 group">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2.5 rounded-2xl bg-emerald-500/20 text-emerald-300 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(16,185,129,0.4)] border border-emerald-500/40">
                 <Leaf className="w-5 h-5 animate-leaf-sway" />
               </div>
-              <Badge className="text-[10px] font-bold bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+              <Badge className="text-[10px] font-mono font-bold bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
                 Canopy Peak
               </Badge>
             </div>
             <div className="font-display text-2xl md:text-3xl font-extrabold text-white font-mono">
               {averageNDVI.toFixed(2)}
             </div>
-            <div className="text-xs text-emerald-300 mt-1 font-semibold">Average NDVI Chlorophyll</div>
+            <div className="text-xs text-emerald-300 mt-1 font-mono font-semibold">Average NDVI Chlorophyll</div>
           </div>
 
           {/* Card 2: Cyan Active Farm Plots */}
-          <div className="p-5 rounded-3xl bg-gradient-to-br from-cyan-900/35 via-[#061524]/95 to-[#071828]/95 border border-cyan-500/40 border-t-4 border-t-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.2)] hover:border-cyan-400 hover:shadow-[0_0_40px_rgba(6,182,212,0.3)] hover:-translate-y-1 transition-all duration-300 group backdrop-blur-2xl">
+          <div className="hud-panel hud-bracket p-5 border-cyan-500/40 shadow-[0_0_30px_rgba(6,182,212,0.25)] hover:border-cyan-400 hover:shadow-[0_0_40px_rgba(6,182,212,0.35)] hover:-translate-y-1 transition-all duration-300 group">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-300 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(6,182,212,0.4)] border border-cyan-500/40">
                 <MapPin className="w-5 h-5" />
               </div>
-              <Badge className="text-[10px] font-bold bg-cyan-500/25 text-cyan-300 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.2)]">
+              <Badge className="text-[10px] font-mono font-bold bg-cyan-500/25 text-cyan-300 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.2)]">
                 Active Telemetry
               </Badge>
             </div>
             <div className="font-display text-2xl md:text-3xl font-extrabold text-white font-mono">
               {DEMO_FIELDS.length}
             </div>
-            <div className="text-xs text-cyan-300 mt-1 font-semibold">Monitored Farm Plots</div>
+            <div className="text-xs text-cyan-300 mt-1 font-mono font-semibold">Monitored Farm Plots</div>
           </div>
 
           {/* Card 3: Amber Total Area */}
-          <div className="p-5 rounded-3xl bg-gradient-to-br from-amber-900/35 via-[#181208]/95 to-[#1c1409]/95 border border-amber-500/40 border-t-4 border-t-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.2)] hover:border-amber-400 hover:shadow-[0_0_40px_rgba(245,158,11,0.3)] hover:-translate-y-1 transition-all duration-300 group backdrop-blur-2xl">
+          <div className="hud-panel hud-bracket p-5 border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.25)] hover:border-amber-400 hover:shadow-[0_0_40px_rgba(245,158,11,0.35)] hover:-translate-y-1 transition-all duration-300 group">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-300 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.4)] border border-amber-500/40">
                 <TrendingUp className="w-5 h-5" />
               </div>
-              <Badge className="text-[10px] font-bold bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+              <Badge className="text-[10px] font-mono font-bold bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
                 Acreage
               </Badge>
             </div>
             <div className="font-display text-2xl md:text-3xl font-extrabold text-white font-mono">
               {totalArea.toFixed(1)} ha
             </div>
-            <div className="text-xs text-amber-300 mt-1 font-semibold">Total Monitored Area</div>
+            <div className="text-xs text-amber-300 mt-1 font-mono font-semibold">Total Monitored Area</div>
           </div>
 
           {/* Card 4: Rose Attention Required */}
-          <div className="p-5 rounded-3xl bg-gradient-to-br from-rose-900/35 via-[#180a14]/95 to-[#1c0b16]/95 border border-rose-500/40 border-t-4 border-t-rose-400 shadow-[0_0_30px_rgba(244,63,94,0.2)] hover:border-rose-400 hover:shadow-[0_0_40px_rgba(244,63,94,0.3)] hover:-translate-y-1 transition-all duration-300 group backdrop-blur-2xl">
+          <div className="hud-panel hud-bracket p-5 border-rose-500/40 shadow-[0_0_30px_rgba(244,63,94,0.25)] hover:border-rose-400 hover:shadow-[0_0_40px_rgba(244,63,94,0.35)] hover:-translate-y-1 transition-all duration-300 group">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2.5 rounded-2xl bg-rose-500/20 text-rose-300 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(244,63,94,0.4)] border border-rose-500/40">
                 <AlertTriangle className="w-5 h-5" />
