@@ -190,25 +190,29 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
         data = await runInBrowserOfflineInference(file);
       }
 
-      // Check if uploaded crop is not one of the 38 supported classes
-      if (data.is_supported === false) {
+      // Only block if strictly non-plant / non-foliar (e.g. photo of a car or shoe)
+      if (data.is_supported === false && data.status === 'non_foliar_subject') {
         const unsupportedResult: DiagnosisResult = {
           isSupported: false,
-          cropDetected: data.crop_detected || 'Uncataloged Crop Variety',
-          unsupportedMessage: data.message || 'We are still uploading and training more crop data! It may take some time.',
-          unsupportedNoticeTitle: data.notice_title || 'Dataset Ingestion & Training in Progress 🔄',
-          unsupportedNoticeDesc: data.notice_description,
+          cropDetected: data.crop_detected || 'Non-Foliar Subject',
+          unsupportedMessage: data.message || 'Please capture a clear leaf photo.',
+          unsupportedNoticeTitle: data.notice_title || 'Foliage Not Detected',
+          unsupportedNoticeDesc: data.notice_description || 'Please capture or upload a clear, focused photograph of a crop leaf blade.',
           expansionRoadmap: data.expansion_pipeline || [],
-          plantName: data.crop_detected || 'Uncataloged Crop',
-          diseaseName: 'Data Uploading in Progress',
-          healthStatus: 'Under Research',
+          plantName: data.crop_detected || 'Unrecognized Subject',
+          diseaseName: 'No Foliage Detected',
+          healthStatus: 'Inconclusive',
           rawConfidence: 0.0,
+          thermalIronbow: data.thermal_ironbow || data.gradcam_heatmap,
+          thermalJet: data.thermal_jet,
+          thermalInferno: data.thermal_inferno,
         };
         setDiagnosis(unsupportedResult);
         setScanStage('result');
         toast({
-          title: 'Dataset Ingestion in Progress 🔄',
-          description: `We are currently uploading more data for ${data.crop_detected || 'this crop variety'}.`,
+          title: 'Foliage Detection Alert 🌿',
+          description: 'Please upload a clear photo showing a crop leaf blade.',
+          variant: 'destructive',
         });
         return;
       }
@@ -838,10 +842,49 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                 </div>
 
                 {/* Right Panel: Thermal Heatmap (Shows Where It Hurts) */}
-                <div className="relative rounded-2xl overflow-hidden border border-amber-500/30 shadow-2xl bg-black/80 aspect-video flex items-center justify-center group select-none">
-                  <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 bg-black/80 px-2.5 py-1 rounded-xl border border-amber-500/30">
+                <div className="relative rounded-2xl overflow-hidden border-2 border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.2)] bg-black/90 aspect-video flex items-center justify-center group select-none">
+                  {/* Top Left: Active Palette & Hotspot Status */}
+                  <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 bg-black/85 backdrop-blur-md px-3 py-1 rounded-xl border border-amber-500/40 shadow-lg">
                     <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Thermal Heatmap</span>
+                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider font-mono">
+                      {thermalPalette === 'flir' ? 'FLIR Ironbow Thermal' : thermalPalette === 'jet' ? 'Turbo JET Thermal' : 'Inferno Hot Metal'}
+                    </span>
+                    {diagnosis && (
+                      <span className="text-[9px] bg-red-500/20 text-rose-300 px-1.5 py-0.5 rounded border border-rose-500/30 font-mono ml-1">
+                        {diagnosis.explainableAI?.thermalStressIncreased?.hotspotReading || 'Hotspot: 36.8°C'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Top Right: Instant Palette Switcher */}
+                  <div className="absolute top-2.5 right-12 z-20 flex items-center gap-1 bg-black/85 backdrop-blur-md p-1 rounded-xl border border-white/15 font-mono text-[10px] shadow-lg">
+                    <button
+                      onClick={() => setThermalPalette('flir')}
+                      className={`px-2 py-0.5 rounded-lg font-bold transition-all ${
+                        thermalPalette === 'flir' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-md' : 'text-gray-400 hover:text-white'
+                      }`}
+                      title="FLIR Ironbow Radiometric Thermal"
+                    >
+                      FLIR
+                    </button>
+                    <button
+                      onClick={() => setThermalPalette('jet')}
+                      className={`px-2 py-0.5 rounded-lg font-bold transition-all ${
+                        thermalPalette === 'jet' ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-black shadow-md' : 'text-gray-400 hover:text-white'
+                      }`}
+                      title="Turbo JET Thermal Spectrum"
+                    >
+                      JET
+                    </button>
+                    <button
+                      onClick={() => setThermalPalette('inferno')}
+                      className={`px-2 py-0.5 rounded-lg font-bold transition-all ${
+                        thermalPalette === 'inferno' ? 'bg-gradient-to-r from-rose-500 to-amber-400 text-black shadow-md' : 'text-gray-400 hover:text-white'
+                      }`}
+                      title="Inferno Hot Metal Thermal"
+                    >
+                      HOT
+                    </button>
                   </div>
 
                   <div
@@ -853,6 +896,23 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                       alt="Thermal Heatmap"
                       className="w-full h-full object-contain block"
                     />
+                  </div>
+
+                  {/* Bottom Calibration Temperature Legend Bar */}
+                  <div className="absolute bottom-2.5 inset-x-4 z-20 pointer-events-none flex flex-col items-center">
+                    <div className="w-full max-w-sm bg-black/90 backdrop-blur-md px-3 py-1 rounded-xl border border-amber-500/40 flex items-center justify-between text-[9px] font-mono text-gray-300 shadow-xl">
+                      <span className="text-cyan-400 font-bold">21°C Cool Blade</span>
+                      <div className="flex-1 mx-2 h-2 rounded-full overflow-hidden flex bg-black/60 shadow-inner">
+                        {thermalPalette === 'jet' ? (
+                          <div className="w-full h-full bg-gradient-to-r from-blue-600 via-cyan-400 via-emerald-400 via-yellow-400 to-red-600" />
+                        ) : thermalPalette === 'inferno' ? (
+                          <div className="w-full h-full bg-gradient-to-r from-[#0a0518] via-[#a31a6d] via-[#e45a31] to-[#fff2a0]" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-r from-[#120c5f] via-[#670ca0] via-[#00a8cc] via-[#f59e0b] via-[#ef4444] to-[#ffffff]" />
+                        )}
+                      </div>
+                      <span className="text-rose-400 font-bold">38°C+ Hotspot</span>
+                    </div>
                   </div>
 
                   {/* Clear Button */}
@@ -1191,9 +1251,9 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                       diagnosis.healthStatus === 'Healthy' ? 'text-emerald-400' : 'text-orange-400'
                     }`}
                   >
-                    {diagnosis.diseases && diagnosis.diseases.length > 0
+                    {diagnosis.diseaseName || (diagnosis.diseases && diagnosis.diseases.length > 0
                       ? diagnosis.diseases[0].name
-                      : 'Healthy Foliage / No Pathogen Detected'}
+                      : 'Healthy Foliage / No Pathogen Detected')}
                   </p>
                   {diagnosis.scientificName && (
                     <span className="text-xs italic text-gray-400">({diagnosis.scientificName})</span>

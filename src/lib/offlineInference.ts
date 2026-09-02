@@ -568,49 +568,27 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
 
             const matchedUnsupported = Object.entries(UNSUPPORTED_CROPS_LIST).find(([k]) => fileNameLower.includes(k));
             const foliarRatio = totalFoliarPixels / (W * H);
-            const isNonFoliar = foliarRatio < 0.04 && !isKnownSample;
+            const isNonFoliar = foliarRatio < 0.005 && !isKnownSample;
 
-            if (matchedUnsupported || isNonFoliar) {
-              const detectedCropName = matchedUnsupported ? matchedUnsupported[1] : 'Non-Foliar / Unrecognized Subject';
+            if (isNonFoliar) {
               resolve({
                 raw_class: 'unsupported_crop',
-                disease: 'Dataset Expansion In Progress',
-                plant: detectedCropName,
-                issue: 'Training In Progress',
+                disease: 'No Plant Foliage Detected',
+                plant: 'Non-Foliar Subject',
+                issue: 'Please capture a clear leaf photo',
                 confidence: 0.0,
                 is_healthy: false,
                 severity: 'Low',
-                recommendation: 'We are actively ingesting and uploading new field datasets for this crop.',
+                recommendation: 'Please capture or upload a clear, focused photograph of a crop leaf blade.',
                 top_predictions: [],
                 is_offline_edge: true,
                 is_supported: false,
-                status: 'data_uploading_in_progress',
-                crop_detected: detectedCropName,
-                message: 'We are still uploading and training more crop data! This crop variety or foliar pattern is not yet in our initial 38 PlantVillage classes. It may take some time as our AI pipeline ingests new field datasets.',
-                expansion_pipeline: [
-                  { crop: 'Rice / Paddy', status: 'Curating Blast & Sheath Blight samples', progress: 78 },
-                  { crop: 'Wheat', status: 'Rust & Powdery Mildew dataset annotation', progress: 65 },
-                  { crop: 'Cotton', status: 'Bacterial Blight & Leaf Curl data ingestion', progress: 58 },
-                  { crop: 'Mango', status: 'Anthracnose & Malformation labeling', progress: 82 },
-                  { crop: 'Sugarcane', status: 'Red Rot & Smut image collection', progress: 50 },
-                  { crop: 'Banana', status: 'Sigatoka & Panama Disease field validation', progress: 62 },
-                ],
-                supported_crops: [
-                  { name: 'Apple', classes: ['Scab', 'Black Rot', 'Cedar Rust', 'Healthy'] },
-                  { name: 'Blueberry', classes: ['Healthy'] },
-                  { name: 'Cherry', classes: ['Powdery Mildew', 'Healthy'] },
-                  { name: 'Corn (Maize)', classes: ['Cercospora Leaf Spot', 'Common Rust', 'Northern Leaf Blight', 'Healthy'] },
-                  { name: 'Grape', classes: ['Black Rot', 'Esca (Black Measles)', 'Leaf Blight', 'Healthy'] },
-                  { name: 'Orange (Citrus)', classes: ['Citrus Greening (Huanglongbing)'] },
-                  { name: 'Peach', classes: ['Bacterial Spot', 'Healthy'] },
-                  { name: 'Pepper (Bell)', classes: ['Bacterial Spot', 'Healthy'] },
-                  { name: 'Potato', classes: ['Early Blight', 'Late Blight', 'Healthy'] },
-                  { name: 'Raspberry', classes: ['Healthy'] },
-                  { name: 'Soybean', classes: ['Healthy'] },
-                  { name: 'Squash', classes: ['Powdery Mildew'] },
-                  { name: 'Strawberry', classes: ['Leaf Scorch', 'Healthy'] },
-                  { name: 'Tomato', classes: ['Bacterial Spot', 'Early Blight', 'Late Blight', 'Leaf Mold', 'Septoria Leaf Spot', 'Spider Mites', 'Target Spot', 'Yellow Leaf Curl Virus', 'Mosaic Virus', 'Healthy'] }
-                ]
+                status: 'non_foliar_subject',
+                crop_detected: 'Non-Foliar Subject',
+                message: 'No plant foliar pigments were detected in this image. Please capture a clear leaf photo.',
+                thermal_ironbow: canvasIronbow.toDataURL('image/jpeg', 0.92),
+                thermal_jet: canvasJet.toDataURL('image/jpeg', 0.92),
+                thermal_inferno: canvasInferno.toDataURL('image/jpeg', 0.92),
               });
               return;
             }
