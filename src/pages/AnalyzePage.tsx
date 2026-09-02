@@ -1,7 +1,6 @@
 import { useState, useEffect, Suspense, lazy } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
-import { DemoFieldsSelector } from '@/components/analyze/DemoFieldsSelector';
 import { NDVIOverlay } from '@/components/analyze/NDVIOverlay';
 import { SavedFieldsSidebar } from '@/components/analyze/SavedFieldsSidebar';
 import { AreaRangeSelector } from '@/components/analyze/AreaRangeSelector';
@@ -10,14 +9,12 @@ import { AreaRangeSelector } from '@/components/analyze/AreaRangeSelector';
 const FieldMap = lazy(() => import('@/components/analyze/FieldMap').then(m => ({ default: m.FieldMap })));
 const AnalysisDashboard = lazy(() => import('@/components/analyze/AnalysisDashboard').then(m => ({ default: m.AnalysisDashboard })));
 const AlertsConfig = lazy(() => import('@/components/analyze/AlertsConfig').then(m => ({ default: m.AlertsConfig })));
-const WeatherWidget = lazy(() => import('@/components/analyze/WeatherWidget').then(m => ({ default: m.WeatherWidget })));
-const AIRecommendations = lazy(() => import('@/components/analyze/AIRecommendations').then(m => ({ default: m.AIRecommendations })));
 
-import { DemoField, DEMO_FIELDS, generateNDVIData, TurfGeospatialMetrics } from '@/lib/types';
+import { DemoField, DEMO_FIELDS, generateNDVIData, TurfGeospatialMetrics, getNDVICategory } from '@/lib/types';
 import { queueFieldOffline } from '@/lib/offlineQueue';
 import { useSavedFields } from '@/hooks/useSavedFields';
 import { Button } from '@/components/ui/button';
-import { Scan, Save, RotateCcw, Satellite, LogIn } from 'lucide-react';
+import { Scan, Save, RotateCcw, Satellite, LogIn, Wheat } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -289,39 +286,67 @@ const AnalyzePage = () => {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="font-display text-3xl md:text-4xl font-bold mb-2 flex items-center gap-3">
-            <Satellite className="w-8 h-8 text-primary" />
-            Field Analysis
-          </h1>
-          <p className="text-muted-foreground">
-            Select a location on the map or choose a demo farm to analyze crop health
-          </p>
+        {/* Header & Quick Farm Selector */}
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="font-display text-3xl md:text-4xl font-bold mb-1 flex items-center gap-3">
+                <Satellite className="w-8 h-8 text-primary" />
+                Field Analysis
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Select a location on the satellite map or choose a farm to analyze crop vigor and health
+              </p>
+            </div>
+            {selectedField && (
+              <div className="flex items-center gap-2 bg-secondary/50 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-border/80 text-xs self-start md:self-auto">
+                <span className="text-muted-foreground">Active Farm:</span>
+                <span className="font-bold text-foreground">{selectedField.name.split(',')[0]}</span>
+                <span className="font-mono text-primary font-bold">({selectedField.crop})</span>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Demo Farm Selector Horizontal Bar */}
+          <div className="glass-card p-2.5 rounded-xl border border-border/80 bg-background/80 backdrop-blur-md shadow-md">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0 flex items-center gap-1.5 px-2">
+                <Wheat className="w-3.5 h-3.5 text-primary" />
+                Demo Farms:
+              </span>
+              {DEMO_FIELDS.map((f) => {
+                const isSelected = selectedField?.id === f.id;
+                const cat = getNDVICategory(f.ndvi);
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => {
+                      setSelectedField(f);
+                      setAnalysisComplete(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium shrink-0 flex items-center gap-2 transition-all ${
+                      isSelected
+                        ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm'
+                        : 'bg-secondary/40 hover:bg-secondary text-muted-foreground border border-transparent'
+                    }`}
+                  >
+                    <span className="font-semibold text-foreground">{f.name.split(' ')[0]}</span>
+                    <span className="text-[11px] opacity-75">{f.crop}</span>
+                    <span className={`font-mono font-bold text-[11px] ${cat.color}`}>
+                      {f.ndvi.toFixed(2)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-6">
-          {/* Left Sidebar */}
-          <div className="lg:col-span-3 space-y-6">
-            <DemoFieldsSelector
-              selectedField={selectedField}
-              onSelect={setSelectedField}
-            />
-            <SavedFieldsSidebar
-              onSelectField={(field) => {
-                setSelectedField(field);
-                setAnalysisComplete(false);
-              }}
-              selectedFieldId={selectedField?.id}
-              savedFields={savedFields}
-              removeField={removeField}
-            />
-          </div>
-
-          {/* Main Content */}
-          <div className="lg:col-span-6 space-y-6">
-            {/* Map */}
-            <div className="h-[400px]">
+          {/* Main Map & Analysis Stage (8 Cols) */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* Map Canvas */}
+            <div className="h-[520px] md:h-[580px] w-full rounded-2xl overflow-hidden shadow-2xl border border-border">
               <Suspense fallback={<ComponentLoader />}>
                 <FieldMap
                   selectedField={selectedField}
@@ -573,19 +598,24 @@ const AnalyzePage = () => {
             )}
           </div>
 
-          {/* Right Sidebar */}
-          <div className="lg:col-span-3 space-y-6">
+          {/* Right Sidebar - Analytics & Tools (4 Cols) */}
+          <div className="lg:col-span-4 space-y-6">
+            <SavedFieldsSidebar
+              onSelectField={(field) => {
+                setSelectedField(field);
+                setAnalysisComplete(false);
+              }}
+              selectedFieldId={selectedField?.id}
+              savedFields={savedFields}
+              removeField={removeField}
+            />
+
             {selectedField && (
               <NDVIOverlay field={selectedField} />
             )}
 
             <AreaRangeSelector value={areaRange} onChange={setAreaRange} />
-            <Suspense fallback={<ComponentLoader />}>
-              <WeatherWidget field={selectedField} />
-            </Suspense>
-            <Suspense fallback={<ComponentLoader />}>
-              <AIRecommendations field={selectedField} />
-            </Suspense>
+
             <Suspense fallback={<ComponentLoader />}>
               <AlertsConfig selectedField={selectedField} currentNdvi={ndviData?.average} />
             </Suspense>

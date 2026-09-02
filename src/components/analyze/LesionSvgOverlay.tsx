@@ -24,9 +24,10 @@ export function LesionSvgOverlay({ spots, enabled = true }: LesionSvgOverlayProp
   });
 
   const getSpotColor = (score: number) => {
-    if (score >= 7.5) return { stroke: '#ef4444', fill: 'rgba(239, 68, 68, 0.28)', ring: '#f87171' };
-    if (score >= 5.0) return { stroke: '#f59e0b', fill: 'rgba(245, 158, 11, 0.25)', ring: '#fbbf24' };
-    return { stroke: '#eab308', fill: 'rgba(234, 179, 8, 0.20)', ring: '#fde047' };
+    // NO RED: Use high-visibility Amber, Gold, and Cyan/Emerald
+    if (score >= 7.5) return { stroke: '#f59e0b', fill: 'rgba(245, 158, 11, 0.10)', ring: '#fbbf24' };
+    if (score >= 5.0) return { stroke: '#eab308', fill: 'rgba(234, 179, 8, 0.08)', ring: '#fde047' };
+    return { stroke: '#10b981', fill: 'rgba(16, 185, 129, 0.08)', ring: '#34d399' };
   };
 
   return (
@@ -39,17 +40,18 @@ export function LesionSvgOverlay({ spots, enabled = true }: LesionSvgOverlayProp
       >
         <defs>
           <filter id="glow-high" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feGaussianBlur stdDeviation="4" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
 
         {filteredSpots.map((spot) => {
           const colors = getSpotColor(spot.severity_score);
-          const cx = spot.cx_norm * 1000;
-          const cy = spot.cy_norm * 1000;
-          const rx = Math.max(14, (spot.w_norm * 1000) / 2);
-          const ry = Math.max(14, (spot.h_norm * 1000) / 2);
+          const cx = Math.min(960, Math.max(40, spot.cx_norm * 1000));
+          const cy = Math.min(960, Math.max(40, spot.cy_norm * 1000));
+          // Clamped tightly so no giant circle covers the leaf or goes outside
+          const rx = Math.min(32, Math.max(7, (spot.w_norm * 1000) / 2));
+          const ry = Math.min(32, Math.max(7, (spot.h_norm * 1000) / 2));
           const isHovered = hoveredSpot?.id === spot.id;
 
           return (
@@ -65,8 +67,8 @@ export function LesionSvgOverlay({ spots, enabled = true }: LesionSvgOverlayProp
                 <ellipse
                   cx={cx}
                   cy={cy}
-                  rx={rx + 8}
-                  ry={ry + 8}
+                  rx={rx + 4}
+                  ry={ry + 4}
                   fill="none"
                   stroke={colors.ring}
                   strokeWidth={1.5}
@@ -130,16 +132,16 @@ export function LesionSvgOverlay({ spots, enabled = true }: LesionSvgOverlayProp
           <div className="bg-[#0c1422]/95 backdrop-blur-xl border border-white/20 p-3.5 rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.8)] text-white text-xs space-y-1.5 min-w-[210px] animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1.5">
               <span className="font-bold flex items-center gap-1.5 text-emerald-400 font-mono">
-                <Flame className="w-3.5 h-3.5 text-rose-400" />
+                <Flame className="w-3.5 h-3.5 text-amber-400" />
                 Lesion Spot #{hoveredSpot.id}
               </span>
               <Badge
                 className={`text-[9px] font-bold px-1.5 py-0 ${
                   hoveredSpot.severity_score >= 7.0
-                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                    : hoveredSpot.severity_score >= 5.0
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                    : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+                    : hoveredSpot.severity_score >= 5.0
+                    ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                 }`}
               >
                 Severity {hoveredSpot.severity_score}/10
@@ -159,10 +161,10 @@ export function LesionSvgOverlay({ spots, enabled = true }: LesionSvgOverlayProp
                 <span
                   className={`font-semibold ${
                     hoveredSpot.necrotic_index.includes('High')
-                      ? 'text-rose-400'
-                      : hoveredSpot.necrotic_index.includes('Moderate')
                       ? 'text-amber-400'
-                      : 'text-yellow-300'
+                      : hoveredSpot.necrotic_index.includes('Moderate')
+                      ? 'text-yellow-300'
+                      : 'text-emerald-300'
                   }`}
                 >
                   {hoveredSpot.necrotic_index}

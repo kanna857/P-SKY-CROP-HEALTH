@@ -26,7 +26,7 @@ export interface NDVIData {
 }
 
 export type AlertLanguage = 'en' | 'te' | 'hi' | 'ta' | 'kn';
-export type AlertMethod = 'sms' | 'whatsapp' | 'voice';
+export type AlertMethod = 'sms' | 'whatsapp' | 'voice' | 'telegram';
 
 export interface AlertSettings {
   enabled: boolean;

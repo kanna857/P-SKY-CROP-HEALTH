@@ -92,6 +92,7 @@ export function AlertsConfig({ selectedField, currentNdvi }: AlertsConfigProps) 
         sms: 'SMS',
         whatsapp: 'WhatsApp',
         voice: 'Voice Call',
+        telegram: 'Telegram',
       };
       
       const langName = ALERT_LANGUAGES.find(l => l.code === settings.language)?.nativeName || 'English';
@@ -113,6 +114,71 @@ export function AlertsConfig({ selectedField, currentNdvi }: AlertsConfigProps) 
   };
 
   const sendAlert = async (isTest: boolean = false) => {
+    // 1. Direct Telegram dispatch to user's Telegram chat
+    if (settings.method === 'telegram') {
+      const botToken = (import.meta as any).env?.VITE_TELEGRAM_BOT_TOKEN || '8855692632:AAF22TKy3N1BEhG5X2JxR8ZGRHfJxmGxXDg';
+      const chatId = (import.meta as any).env?.VITE_TELEGRAM_CHAT_ID || '8079572053';
+
+      const alertMsg = isTest
+        ? `🤖 *SKYCROP TELEGRAM ALERT TEST*\n━━━━━━━━━━━━━━━━━━\n🌾 *Field:* ${selectedField?.name || 'Prakasam Demonstration Farm'}\n🌱 *Crop:* ${selectedField?.crop || 'Tomato'}\n📊 *Current NDVI:* ${(currentNdvi || 0.35).toFixed(2)}\n🔔 *Alert Threshold:* < ${settings.threshold}\n✅ *Status:* Connection Active! You will receive field alerts here.\n━━━━━━━━━━━━━━━━━━\n🛰️ *Sent via SkyCrop Autonomous Agronomy Engine*`
+        : `🚨 *SKYCROP EARLY WARNING ALERT*\n━━━━━━━━━━━━━━━━━━\n🌾 *Field:* ${selectedField?.name || 'My Farm Sector'}\n🌱 *Crop:* ${selectedField?.crop || 'Tomato'}\n📊 *NDVI Reading:* ${(currentNdvi || 0.35).toFixed(2)} (Threshold: < ${settings.threshold})\n⚠️ *Status:* High Crop Stress Detected\n💡 *Action:* Inspect Zone 3 within 24 hours. Check drip lines & apply preventative spray.\n━━━━━━━━━━━━━━━━━━\n🛰️ *Dispatched automatically by SkyCrop AI*`;
+
+      try {
+        if (isTest) setIsTesting(true);
+        else setIsSending(true);
+
+        let dispatched = false;
+        try {
+          const backendRes = await fetch('http://localhost:8000/send-telegram-alert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: alertMsg,
+            }),
+          });
+          if (backendRes.ok) {
+            dispatched = true;
+          }
+        } catch {
+          // Backend not reachable, continue to direct bot API
+        }
+
+        if (!dispatched) {
+          const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: alertMsg,
+              parse_mode: 'Markdown',
+            }),
+          });
+
+          const data = await res.json();
+          if (!data.ok) {
+            throw new Error(data.description || 'Telegram Bot API error');
+          }
+        }
+
+        toast({
+          title: isTest ? '✅ Telegram Test Alert Delivered!' : '✅ Alert Sent to Telegram!',
+          description: `Message sent directly to your Telegram chat from @MySkyCropAlertBot.`,
+        });
+      } catch (err: any) {
+        console.warn('Direct Telegram Bot error, falling back to app:', err);
+        window.open(`https://t.me/share/url?url=https://skycrop.farm&text=${encodeURIComponent(alertMsg)}`, '_blank');
+        toast({
+          title: 'Telegram Alert Launched',
+          description: 'Opening Telegram app.',
+        });
+      } finally {
+        setIsSending(false);
+        setIsTesting(false);
+      }
+      return;
+    }
+
     if (!settings.phone) {
       toast({
         title: 'Phone Required',
@@ -169,6 +235,7 @@ export function AlertsConfig({ selectedField, currentNdvi }: AlertsConfigProps) 
     { id: 'sms', icon: Phone, label: 'SMS', sublabel: 'Text message' },
     { id: 'whatsapp', icon: MessageSquare, label: 'WhatsApp', sublabel: 'Rich messages' },
     { id: 'voice', icon: PhoneCall, label: 'Voice Call', sublabel: 'Audio alerts' },
+    { id: 'telegram', icon: Send, label: 'Telegram', sublabel: 'Instant alerts' },
   ];
 
   return (
@@ -240,7 +307,7 @@ export function AlertsConfig({ selectedField, currentNdvi }: AlertsConfigProps) 
             {/* Alert Method */}
             <div>
               <label className="block text-sm font-medium mb-2">Alert Method</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {alertMethods.map((method) => {
                   const Icon = method.icon;
                   return (
@@ -261,6 +328,18 @@ export function AlertsConfig({ selectedField, currentNdvi }: AlertsConfigProps) 
                 })}
               </div>
               
+              {settings.method === 'telegram' && (
+                <div className="mt-3 p-3 rounded-lg bg-[#229ED9]/10 border border-[#229ED9]/20 flex items-start gap-2">
+                  <Send className="w-5 h-5 text-[#229ED9] shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-foreground">Telegram Alerts</p>
+                    <p className="text-muted-foreground text-xs mt-1">
+                      Direct one-click Telegram dispatch. Clicking "Send Test Alert Now" opens Telegram with your complete field telemetry formatted and ready to send.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {settings.method === 'voice' && (
                 <div className="mt-3 p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-start gap-2">
                   <Volume2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
@@ -349,7 +428,7 @@ export function AlertsConfig({ selectedField, currentNdvi }: AlertsConfigProps) 
               <Button
                 onClick={() => sendAlert(true)} 
                 className="w-full"
-                disabled={isTesting || !settings.phone}
+                disabled={isTesting || (settings.method !== 'telegram' && !settings.phone)}
               >
                 {isTesting ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />

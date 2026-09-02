@@ -43,6 +43,24 @@ export default function HotlinePage() {
 
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const isCallActiveRef = useRef<boolean>(false);
+  const isMutedRef = useRef<boolean>(false);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const activeLangRef = useRef<SupportedLang>('en');
+
+  useEffect(() => {
+    isCallActiveRef.current = isCallActive;
+  }, [isCallActive]);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  useEffect(() => {
+    activeLangRef.current = selectedLang;
+  }, [selectedLang]);
 
   // Timer for call duration
   useEffect(() => {
@@ -64,120 +82,16 @@ export default function HotlinePage() {
     }
   }, []);
 
-  // Text-To-Speech function
-  const speakText = (text: string) => {
-    if (!synthRef.current || !isSpeakerOn) return;
-    synthRef.current.cancel(); // Stop any previous speech
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Choose appropriate voice/lang tag
-    const langMap: Record<SupportedLang, string> = {
-      en: 'en-IN',
-      hi: 'hi-IN',
-      pa: 'hi-IN', // Hindi voice fallback for Punjabi script
-      te: 'te-IN',
-      ta: 'ta-IN',
-      mr: 'mr-IN'
-    };
-
-    utterance.lang = langMap[selectedLang] || 'en-IN';
-    utterance.rate = 0.95; // Clear agronomy pacing
-    utterance.pitch = 1.0;
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    synthRef.current.speak(utterance);
-  };
-
-  // Start Call Handler
-  const handleStartCall = () => {
-    setIsCallActive(true);
-    const greeting = activeDoctor.greetingText[selectedLang] || activeDoctor.greetingText.en;
-    
-    const initialMsg: HotlineMessage = {
-      id: `msg-${Date.now()}`,
-      sender: 'doctor',
-      text: greeting,
-      timestamp: 'Just now'
-    };
-
-    setMessages([initialMsg]);
-    speakText(greeting);
-
-    toast({
-      title: `Connected to ${activeDoctor.name}`,
-      description: 'Call is live. Speak into your microphone or type below.'
-    });
-  };
-
-  // End Call Handler
-  const handleEndCall = () => {
-    if (synthRef.current) {
-      synthRef.current.cancel();
-    }
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    setIsCallActive(false);
-    setIsListening(false);
-    setIsSpeaking(false);
-    toast({
-      title: 'Call Ended',
-      description: `Duration: ${formatDuration(callDurationSec)}`
-    });
-  };
-
-  // Speech Recognition Toggle with explicit mic permission & live interim speech
-  const handleToggleMic = async () => {
-    // If call is not yet active, start call automatically!
-    if (!isCallActive) {
-      setIsCallActive(true);
-      const greeting = activeDoctor.greetingText[selectedLang] || activeDoctor.greetingText.en;
-      const initialMsg: HotlineMessage = {
-        id: `msg-${Date.now()}`,
-        sender: 'doctor',
-        text: greeting,
-        timestamp: 'Just now'
-      };
-      setMessages([initialMsg]);
-    }
-
-    if (isListening) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-      setIsListening(false);
-      return;
-    }
-
-    // 1. Explicitly prompt for microphone access via getUserMedia
-    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
-      } catch (err: any) {
-        console.warn('Microphone permission issue:', err);
-        toast({
-          title: 'Microphone Permission Needed',
-          description: 'Please click the lock/camera icon in your address bar and select "Allow" for microphone.',
-          variant: 'destructive'
-        });
-        return;
-      }
-    }
+  // Continuous speech listener with silence detection & auto-response
+  const startListeningLoop = () => {
+    if (!isCallActiveRef.current || isMutedRef.current) return;
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
     if (!SpeechRecognition) {
       toast({
-        title: 'Microphone Not Supported in Browser',
-        description: 'Please use Google Chrome, Edge, or Safari, or type in the box below.',
-        variant: 'destructive'
+        title: 'Microphone Not Supported',
+        description: 'Please use Google Chrome, Edge, or type in the box below.',
+        variant: 'destructive',
       });
       return;
     }
@@ -199,20 +113,15 @@ export default function HotlinePage() {
         mr: 'mr-IN'
       };
 
-      recognition.lang = langMap[selectedLang] || 'en-IN';
+      recognition.lang = langMap[activeLangRef.current] || 'en-IN';
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
-      setLiveSpokenWords('');
-      let capturedQuery = '';
+      let capturedSpeech = '';
 
       recognition.onstart = () => {
         setIsListening(true);
-        toast({
-          title: '🎙️ Listening... Speak Now',
-          description: 'Ask any question (e.g. "Wheat rust spray" or "Today wheat rate")'
-        });
       };
 
       recognition.onresult = (event: any) => {
@@ -230,50 +139,300 @@ export default function HotlinePage() {
 
         const currentWords = (finalText || interimText).trim();
         if (currentWords) {
-          capturedQuery = currentWords;
+          capturedSpeech = currentWords;
           setLiveSpokenWords(currentWords);
+
+          // Reset silence timer on every new speech chunk
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+          }
+
+          // Auto-commit query when user pauses speaking for 1.3 seconds
+          silenceTimerRef.current = setTimeout(() => {
+            if (capturedSpeech.trim()) {
+              const queryToSend = capturedSpeech.trim();
+              capturedSpeech = '';
+              setLiveSpokenWords('');
+              try { recognition.stop(); } catch {}
+              handleProcessUserQuery(queryToSend);
+            }
+          }, 1300);
         }
       };
 
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition status:', event.error);
         if (event.error === 'not-allowed') {
+          setIsListening(false);
           toast({
-            title: 'Microphone Access Denied',
-            description: 'Please allow microphone access in your browser site settings.',
-            variant: 'destructive'
+            title: 'Microphone Permission Needed',
+            description: 'Please click the lock icon in your browser address bar to allow microphone, or type your question below.',
+            variant: 'destructive',
           });
-        }
-        if (event.error !== 'no-speech') {
+        } else if (event.error !== 'no-speech') {
           setIsListening(false);
         }
       };
 
       recognition.onend = () => {
         setIsListening(false);
-        if (capturedQuery.trim()) {
-          const queryToSend = capturedQuery;
-          capturedQuery = '';
-          setLiveSpokenWords('');
-          handleProcessUserQuery(queryToSend);
+        // If call is still active and AI is not speaking and user is not muted, restart listening smoothly
+        if (isCallActiveRef.current && !isMutedRef.current && !synthRef.current?.speaking) {
+          setTimeout(() => {
+            if (isCallActiveRef.current && !isMutedRef.current && !synthRef.current?.speaking) {
+              try { recognition.start(); } catch {}
+            }
+          }, 350);
         }
       };
 
       recognition.start();
-    } catch (err: any) {
-      console.error(err);
+    } catch (err) {
+      console.warn('Recognition start exception:', err);
       setIsListening(false);
+    }
+  };
+
+  // Fallback to Web Speech API
+  const fallbackBrowserSpeech = (cleanText: string) => {
+    if (!synthRef.current) {
+      setIsSpeaking(false);
+      if (isCallActiveRef.current && !isMutedRef.current) {
+        startListeningLoop();
+      }
+      return;
+    }
+
+    try {
+      synthRef.current.cancel();
+      try { synthRef.current.resume(); } catch {}
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      const langMap: Record<SupportedLang, string> = {
+        en: 'en-IN',
+        hi: 'hi-IN',
+        pa: 'hi-IN',
+        te: 'te-IN',
+        ta: 'ta-IN',
+        mr: 'mr-IN'
+      };
+
+      utterance.lang = langMap[selectedLang] || 'en-IN';
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+
+      const voices = synthRef.current.getVoices();
+      const matchVoice = voices.find(v => v.lang.toLowerCase().startsWith(selectedLang)) ||
+                         voices.find(v => v.lang.includes('IN') || v.lang.includes('India'));
+      if (matchVoice) {
+        utterance.voice = matchVoice;
+      }
+
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+        setIsListening(false);
+      };
+
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        if (isCallActiveRef.current && !isMutedRef.current) {
+          setTimeout(() => startListeningLoop(), 350);
+        }
+      };
+
+      utterance.onerror = () => {
+        setIsSpeaking(false);
+        if (isCallActiveRef.current && !isMutedRef.current) {
+          setTimeout(() => startListeningLoop(), 350);
+        }
+      };
+
+      synthRef.current.speak(utterance);
+    } catch {
+      setIsSpeaking(false);
+      if (isCallActiveRef.current && !isMutedRef.current) {
+        startListeningLoop();
+      }
+    }
+  };
+
+  // Text-To-Speech function with Native Google TTS Audio streaming + Web Speech API fallback
+  const speakText = async (text: string) => {
+    if (!isSpeakerOn) {
+      setTimeout(() => {
+        if (isCallActiveRef.current && !isMutedRef.current) {
+          startListeningLoop();
+        }
+      }, 500);
+      return;
+    }
+
+    // Stop any existing speech or audio
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      } catch {}
+    }
+    if (synthRef.current) {
+      try { synthRef.current.cancel(); } catch {}
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch {}
+    }
+
+    setIsSpeaking(true);
+    setIsListening(false);
+
+    const cleanText = text.replace(/[*_#•\n]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // Strategy 1: Fluent regional Google TTS Audio Stream (te, hi, ta, mr, pa, en)
+    try {
+      const langCodeMap: Record<string, string> = {
+        te: 'te',
+        hi: 'hi',
+        ta: 'ta',
+        mr: 'mr',
+        pa: 'pa',
+        en: 'en'
+      };
+      const ttsLang = langCodeMap[selectedLang] || 'en';
+      // Deliver the first 190 characters in clear, natural native pronunciation
+      const speakSlice = cleanText.length > 190 ? cleanText.slice(0, 190) : cleanText;
+      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${ttsLang}&client=tw-ob&q=${encodeURIComponent(speakSlice)}`;
+
+      const audio = new Audio(ttsUrl);
+      audioRef.current = audio;
+
+      audio.onplay = () => {
+        setIsSpeaking(true);
+        setIsListening(false);
+      };
+
+      audio.onended = () => {
+        setIsSpeaking(false);
+        if (isCallActiveRef.current && !isMutedRef.current) {
+          setTimeout(() => startListeningLoop(), 350);
+        }
+      };
+
+      audio.onerror = () => {
+        console.warn('Audio stream error, falling back to browser Web Speech API');
+        fallbackBrowserSpeech(cleanText);
+      };
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Audio play prevented or blocked:', err);
+          fallbackBrowserSpeech(cleanText);
+        });
+      }
+    } catch (err) {
+      console.warn('Google TTS exception, using Web Speech fallback:', err);
+      fallbackBrowserSpeech(cleanText);
+    }
+  };
+
+  // Start Call Handler
+  const handleStartCall = async () => {
+    setIsCallActive(true);
+    setIsMuted(false);
+    isCallActiveRef.current = true;
+    isMutedRef.current = false;
+
+    // Prompt for microphone permission up front
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+      } catch (err) {
+        console.warn('Microphone permission warning:', err);
+      }
+    }
+
+    const greeting = activeDoctor.greetingText[selectedLang] || activeDoctor.greetingText.en;
+
+    const initialMsg: HotlineMessage = {
+      id: `msg-${Date.now()}`,
+      sender: 'doctor',
+      text: greeting,
+      timestamp: 'Just now'
+    };
+
+    setMessages([initialMsg]);
+    speakText(greeting);
+
+    toast({
+      title: `Connected to ${activeDoctor.name}`,
+      description: 'Call is live. The AI is listening to your microphone automatically.',
+    });
+  };
+
+  // End Call Handler
+  const handleEndCall = () => {
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      } catch {}
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+    }
+    if (synthRef.current) {
+      synthRef.current.cancel();
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+    }
+    setIsCallActive(false);
+    setIsListening(false);
+    setIsSpeaking(false);
+    isCallActiveRef.current = false;
+    toast({
+      title: 'Call Ended',
+      description: `Duration: ${formatDuration(callDurationSec)}`
+    });
+  };
+
+  // Speech Recognition Toggle
+  const handleToggleMic = () => {
+    if (!isCallActive) {
+      handleStartCall();
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+      }
+      setIsListening(false);
+      setIsMuted(true);
       toast({
-        title: 'Microphone Error',
-        description: err.message || 'Unable to start microphone.',
-        variant: 'destructive'
+        title: 'Microphone Muted',
+        description: 'Tap mic button again to resume listening.',
+      });
+    } else {
+      setIsMuted(false);
+      startListeningLoop();
+      toast({
+        title: '🎙️ Listening... Speak Now',
+        description: 'Ask any question in your language.'
       });
     }
   };
 
   // Process Query (from voice or text input)
-  const handleProcessUserQuery = (queryText: string) => {
+  const handleProcessUserQuery = async (queryText: string) => {
     if (!queryText.trim()) return;
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch {}
+    }
 
     const userMsg: HotlineMessage = {
       id: `user-${Date.now()}`,
@@ -284,20 +443,44 @@ export default function HotlinePage() {
 
     setMessages(prev => [...prev, userMsg]);
     setTextInput('');
+    setLiveSpokenWords('');
 
-    // Generate Agronomist voice response
-    setTimeout(() => {
-      const reply = generateDoctorSpeechResponse(queryText, selectedLang);
-      const doctorMsg: HotlineMessage = {
-        id: `doc-${Date.now()}`,
-        sender: 'doctor',
-        text: reply,
-        timestamp: 'Just now'
-      };
+    // Fetch Agronomist response from FastAPI backend or comprehensive local brain
+    let reply = '';
+    try {
+      const res = await fetch('http://localhost:8000/ask-agronomist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: queryText,
+          language: selectedLang,
+          doctor_id: activeDoctor.id
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.answer) {
+          reply = data.answer;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend agronomist query fallback to local engine:', err);
+    }
 
-      setMessages(prev => [...prev, doctorMsg]);
-      speakText(reply);
-    }, 600);
+    // Comprehensive client-side fallback
+    if (!reply) {
+      reply = generateDoctorSpeechResponse(queryText, selectedLang);
+    }
+
+    const doctorMsg: HotlineMessage = {
+      id: `doc-${Date.now()}`,
+      sender: 'doctor',
+      text: reply,
+      timestamp: 'Just now'
+    };
+
+    setMessages(prev => [...prev, doctorMsg]);
+    speakText(reply);
   };
 
   const formatDuration = (seconds: number) => {
@@ -395,18 +578,37 @@ export default function HotlinePage() {
 
               {/* Live Spoken Speech Display Badge */}
               {isListening && (
-                <div className="p-3 rounded-2xl bg-gradient-to-r from-rose-950/60 to-[#180a14] border border-rose-500/50 text-xs font-mono text-rose-300 animate-pulse space-y-1 shadow-[0_0_20px_rgba(244,63,94,0.25)]">
-                  <div className="flex items-center justify-center gap-1.5 font-bold text-[11px]">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                    <span>LISTENING TO YOUR VOICE IN REAL-TIME</span>
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-rose-950/60 to-[#180a14] border border-rose-500/50 text-xs font-mono text-rose-300 animate-pulse space-y-2 shadow-[0_0_20px_rgba(244,63,94,0.25)]">
+                  <div className="flex items-center justify-between font-bold text-[11px]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                      <span>LISTENING IN REAL-TIME</span>
+                    </div>
+                    <span className="text-[10px] text-gray-400 uppercase font-mono">
+                      {selectedLang}
+                    </span>
                   </div>
                   {liveSpokenWords ? (
-                    <div className="text-white font-sans text-xs font-semibold italic bg-black/60 p-2 rounded-xl border border-white/10">
-                      "{liveSpokenWords}"
+                    <div className="space-y-1.5">
+                      <div className="text-white font-sans text-xs font-semibold italic bg-black/60 p-2.5 rounded-xl border border-white/10 text-left">
+                        "{liveSpokenWords}"
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const toSend = liveSpokenWords;
+                          setLiveSpokenWords('');
+                          try { recognitionRef.current?.stop(); } catch {}
+                          handleProcessUserQuery(toSend);
+                        }}
+                        className="w-full py-1.5 text-[11px] font-bold bg-rose-500 hover:bg-rose-400 text-white rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95"
+                      >
+                        <Check className="w-3.5 h-3.5" /> Submit Spoken Question
+                      </button>
                     </div>
                   ) : (
-                    <div className="text-[11px] text-gray-300">
-                      Speak now (e.g. "Wheat yellow rust remedy" or "Urea spray dose")...
+                    <div className="text-[11px] text-gray-300 text-left">
+                      Speak your question into microphone now...
                     </div>
                   )}
                 </div>
@@ -619,9 +821,19 @@ export default function HotlinePage() {
                 <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] font-mono text-gray-400">
                   <span>Quick Questions:</span>
                   {[
+                    'నా పొలంలో సమస్య ఏమిటి?',
+                    'పత్తిలో గులాబీ రంగు పురుగు మందు ఏమిటి?',
+                    'వరి అగ్గితెగులు నివారణ',
+                    'ఆకులు పసుపు రంగులోకి మారుతున్నాయి',
+                    'పూత రాలకుండా ఏ మందు పిచికారీ చేయాలి?',
+                    'खेत में क्या समस्या है?',
+                    'कपास में गुलाबी सुंडी का इलाज',
+                    'धान में ब्लास्ट रोग की दवा',
+                    'What is the problem in my field?',
+                    'Cotton pink bollworm spray dosage',
+                    'Tomato leaf curl remedy',
                     'Wheat rust spray dosage',
-                    'Urea timing at CRI',
-                    'Today tomato mandi rate',
+                    'Today APMC mandi rates',
                     'Is spray safe today?'
                   ].map((chip) => (
                     <button

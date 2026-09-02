@@ -121,10 +121,11 @@ interface FieldMapProps {
 }
 
 interface SearchResult {
-  place_id: number;
+  place_id: string | number;
   lat: string;
   lon: string;
   display_name: string;
+  subtext?: string;
   type: string;
 }
 
@@ -181,26 +182,167 @@ function parseCoordinateInput(input: string): { lat: number; lng: number } | nul
   return null;
 }
 
+// Multi-Source Forward Geocoding Engine (Photon OSM + Open-Meteo + Nominatim fallback)
+async function geocodeAddress(query: string): Promise<SearchResult[]> {
+  const q = query.trim();
+  if (!q || q.length < 2) return [];
+
+  // Check coordinates or Google Maps URL
+  const parsedCoords = parseCoordinateInput(q);
+  if (parsedCoords) {
+    return [{
+      place_id: 'coord-exact',
+      lat: parsedCoords.lat.toString(),
+      lon: parsedCoords.lng.toString(),
+      display_name: `Exact Coordinates: ${parsedCoords.lat.toFixed(6)}°, ${parsedCoords.lng.toFixed(6)}°`,
+      subtext: toDMS(parsedCoords.lat, parsedCoords.lng),
+      type: 'coordinate'
+    }];
+  }
+
+  const results: SearchResult[] = [];
+  const seenKeys = new Set<string>();
+
+  const addResult = (res: SearchResult) => {
+    const key = `${parseFloat(res.lat).toFixed(3)}_${parseFloat(res.lon).toFixed(3)}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      results.push(res);
+    }
+  };
+
+  // 1. Primary: Photon Komoot OpenStreetMap (lightning fast, unmetered, high detail)
+  try {
+    const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=8`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.features && data.features.length > 0) {
+        for (const feat of data.features) {
+          const props = feat.properties || {};
+          const geom = feat.geometry || {};
+          if (geom.coordinates && geom.coordinates.length >= 2) {
+            const lon = geom.coordinates[0];
+            const lat = geom.coordinates[1];
+            const name = props.name || props.street || props.city || props.district || props.country || q;
+            const contextParts = [props.street, props.district, props.city, props.state, props.country]
+              .filter(Boolean)
+              .filter((item, idx, arr) => arr.indexOf(item) === idx && item !== name);
+            const subtext = contextParts.join(', ');
+            addResult({
+              place_id: `photon-${props.osm_id || Math.random()}`,
+              lat: lat.toString(),
+              lon: lon.toString(),
+              display_name: name,
+              subtext: subtext || `${parseFloat(lat).toFixed(4)}°, ${parseFloat(lon).toFixed(4)}°`,
+              type: props.type || 'place'
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Photon geocoding error:', err);
+  }
+
+  // 2. Secondary: Open-Meteo Geocoding API
+  if (results.length < 3) {
+    try {
+      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=en&format=json`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.results) {
+          for (const item of data.results) {
+            const subParts = [item.admin1, item.country].filter(Boolean);
+            addResult({
+              place_id: `om-${item.id}`,
+              lat: item.latitude.toString(),
+              lon: item.longitude.toString(),
+              display_name: item.name,
+              subtext: subParts.join(', '),
+              type: 'city'
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Open-Meteo geocoding error:', err);
+    }
+  }
+
+  // 3. Fallback: Nominatim OSM
+  if (results.length === 0) {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`, {
+        headers: { 'Accept-Language': 'en' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            const parts = item.display_name.split(',');
+            addResult({
+              place_id: `nom-${item.place_id}`,
+              lat: item.lat,
+              lon: item.lon,
+              display_name: parts[0],
+              subtext: parts.slice(1, 4).join(',').trim(),
+              type: item.type || 'location'
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Nominatim geocoding error:', err);
+    }
+  }
+
+  return results;
+}
+
 // Reverse geocode lat/lng to high-detail locality name
 async function fetchAddress(lat: number, lng: number): Promise<string> {
+  // 1. Try Photon reverse geocoding
+  try {
+    const pRes = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`);
+    if (pRes.ok) {
+      const pData = await pRes.json();
+      if (pData && pData.features && pData.features.length > 0) {
+        const props = pData.features[0].properties || {};
+        const title = props.name || props.street || props.locality || props.district || props.city;
+        const region = props.city || props.district || props.county || props.state;
+        const country = props.country;
+        const parts = [title, region, country].filter(Boolean).filter((item, idx, arr) => arr.indexOf(item) === idx);
+        if (parts.length > 0) {
+          return parts.join(', ');
+        }
+      }
+    }
+  } catch (err) {
+    // continue to fallback
+  }
+
+  // 2. Try Nominatim reverse geocoding
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
       { headers: { 'Accept-Language': 'en' } }
     );
-    if (!res.ok) return `Field (${lat.toFixed(6)}°, ${lng.toFixed(6)}°)`;
-    const data = await res.json();
-    const addr = data.address || {};
-    const parts = [
-      addr.village || addr.suburb || addr.neighbourhood || addr.hamlet || addr.town || addr.city,
-      addr.county || addr.district || addr.state_district,
-      addr.state || addr.country,
-    ].filter(Boolean);
+    if (res.ok) {
+      const data = await res.json();
+      const addr = data.address || {};
+      const parts = [
+        addr.village || addr.suburb || addr.neighbourhood || addr.hamlet || addr.town || addr.city,
+        addr.county || addr.district || addr.state_district,
+        addr.state || addr.country,
+      ].filter(Boolean);
 
-    return parts.length > 0 ? parts.join(', ') : data.display_name.split(',').slice(0, 3).join(',');
+      return parts.length > 0 ? parts.join(', ') : data.display_name.split(',').slice(0, 3).join(',');
+    }
   } catch (err) {
-    return `Field (${lat.toFixed(6)}°, ${lng.toFixed(6)}°)`;
+    // continue
   }
+
+  return `Field (${lat.toFixed(6)}°, ${lng.toFixed(6)}°)`;
 }
 
 export function FieldMap({
@@ -226,13 +368,14 @@ export function FieldMap({
   const [mapReady, setMapReady] = useState(false);
   const [activeLayer, setActiveLayer] = useState<MapLayerType>('hybrid'); // Default to hybrid satellite for maximum clarity
   const [showNdviOverlay, setShowNdviOverlay] = useState(false);
-  const [showCenterCrosshair, setShowCenterCrosshair] = useState(true);
+  const [showCenterCrosshair, setShowCenterCrosshair] = useState(false);
 
   // Search & Geocoding State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const searchDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // GPS High-Accuracy State
   const [isLocating, setIsLocating] = useState(false);
@@ -417,7 +560,25 @@ export function FieldMap({
 
     setMapReady(true);
 
+    // Ensure Leaflet tiles and viewport synchronize after DOM layout stabilizes
+    const t1 = setTimeout(() => map.current?.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.current?.invalidateSize(), 400);
+    const t3 = setTimeout(() => map.current?.invalidateSize(), 900);
+
+    const resizeObserver = new ResizeObserver(() => {
+      map.current?.invalidateSize();
+    });
+
+    if (mapContainer.current) {
+      resizeObserver.observe(mapContainer.current);
+    }
+
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      resizeObserver.disconnect();
+
       if (watchPositionIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchPositionIdRef.current);
       }
@@ -456,6 +617,7 @@ export function FieldMap({
     }
 
     setActiveLayer(layerType);
+    map.current.invalidateSize();
   };
 
   // Add demo field markers
@@ -707,6 +869,8 @@ export function FieldMap({
     }
   }, [splitComparisonActive, splitSliderPercent]);
 
+
+
   // CONTINUOUS MULTI-SAMPLE HIGH-ACCURACY GPS TRACKER
   const handleToggleGpsLock = () => {
     if (!map.current) return;
@@ -845,64 +1009,86 @@ export function FieldMap({
     onFieldSelect(updatedField);
   };
 
-  // DEBOUNCED SEARCH PLACE / ADDRESS / PINCODE / VILLAGE
-  const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim() || query.length < 2) {
+  // TRUE DEBOUNCED MULTI-SOURCE SEARCH FOR VILLAGE / CITY / FARM / PINCODE / COORDS
+  const triggerDebouncedSearch = useCallback((query: string) => {
+    if (searchDebounceTimerRef.current) {
+      clearTimeout(searchDebounceTimerRef.current);
+    }
+
+    const q = query.trim();
+    if (!q || q.length < 2) {
       setSearchResults([]);
       setShowSearchDropdown(false);
+      setIsSearching(false);
       return;
     }
 
-    // Check if query is formatted as coordinates or URL
-    const parsedCoords = parseCoordinateInput(query);
-    if (parsedCoords) {
-      setSearchResults([{
-        place_id: 999999,
-        lat: parsedCoords.lat.toString(),
-        lon: parsedCoords.lng.toString(),
-        display_name: `Exact Coordinates: ${parsedCoords.lat.toFixed(7)}°, ${parsedCoords.lng.toFixed(7)}°`,
-        type: 'coordinate'
-      }]);
-      setShowSearchDropdown(true);
+    setIsSearching(true);
+
+    searchDebounceTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await geocodeAddress(q);
+        setSearchResults(results);
+        setShowSearchDropdown(results.length > 0);
+      } catch (err) {
+        console.error('Search location error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 320);
+  }, []);
+
+  // Handle immediate search on Enter key or clicking Search button
+  const handleSearchSubmit = async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    if (searchDebounceTimerRef.current) {
+      clearTimeout(searchDebounceTimerRef.current);
+    }
+
+    if (searchResults.length > 0) {
+      handleSelectSearchResult(searchResults[0]);
       return;
     }
 
     setIsSearching(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=7&addressdetails=1`,
-        { headers: { 'Accept-Language': 'en' } }
-      );
-      if (res.ok) {
-        const data: SearchResult[] = await res.json();
-        setSearchResults(data);
-        setShowSearchDropdown(data.length > 0);
+      const results = await geocodeAddress(q);
+      setSearchResults(results);
+      if (results.length > 0) {
+        handleSelectSearchResult(results[0]);
+      } else {
+        setShowSearchDropdown(false);
       }
     } catch (err) {
-      console.error('Search location error:', err);
+      console.error('Direct search submit error:', err);
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  };
 
   const handleSelectSearchResult = async (result: SearchResult) => {
     setShowSearchDropdown(false);
-    setSearchQuery(result.display_name.split(',')[0]);
+    setSearchQuery(result.display_name);
 
     const lat = parseFloat(result.lat);
     const lng = parseFloat(result.lon);
 
     if (map.current) {
-      map.current.flyTo([lat, lng], 18, { duration: 1.5 });
+      map.current.flyTo([lat, lng], 18, { duration: 1.2 });
+      setTimeout(() => {
+        map.current?.invalidateSize();
+      }, 300);
     }
 
     const field: DemoField = {
       id: `searched-${Date.now()}`,
-      name: result.display_name.split(',').slice(0, 2).join(','),
+      name: result.subtext ? `${result.display_name} (${result.subtext.split(',')[0].trim()})` : result.display_name,
       lat: parseFloat(lat.toFixed(7)),
       lng: parseFloat(lng.toFixed(7)),
-      ndvi: 0.65,
-      crop: 'Selected Farm',
+      ndvi: 0.68,
+      crop: 'Selected Farm Location',
       area: 10,
       lastAnalysis: new Date().toISOString().split('T')[0],
     };
@@ -978,44 +1164,64 @@ export function FieldMap({
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  handleSearch(e.target.value);
+                  triggerDebouncedSearch(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSearchSubmit();
+                  }
                 }}
                 onFocus={() => {
                   if (searchResults.length > 0) setShowSearchDropdown(true);
                 }}
                 placeholder="Search village, city, farm, pincode, or paste lat, lng..."
-                className="pl-9 pr-8 py-2 h-10 glass-card bg-background/95 backdrop-blur-md border-border/80 text-sm shadow-xl focus-visible:ring-primary font-medium"
+                className="pl-9 pr-20 py-2 h-10 glass-card bg-background/95 backdrop-blur-md border-border/80 text-sm shadow-xl focus-visible:ring-primary font-medium"
               />
-              {isSearching && (
-                <Loader2 className="w-4 h-4 text-primary animate-spin absolute right-3" />
-              )}
-              {searchQuery && !isSearching && (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSearchResults([]);
-                    setShowSearchDropdown(false);
-                  }}
-                  className="absolute right-3 text-muted-foreground hover:text-foreground"
+              <div className="absolute right-2 flex items-center gap-1">
+                {isSearching && (
+                  <Loader2 className="w-4 h-4 text-primary animate-spin mr-1" />
+                )}
+                {searchQuery && !isSearching && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSearchResults([]);
+                      setShowSearchDropdown(false);
+                    }}
+                    className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={handleSearchSubmit}
+                  className="h-7 px-2.5 text-xs font-bold rounded-lg shadow-sm"
+                  title="Search & fly to location"
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+                  Go
+                </Button>
+              </div>
             </div>
 
             {/* Autocomplete Dropdown */}
             {showSearchDropdown && searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 glass-card bg-background/95 backdrop-blur-xl rounded-xl border border-border/90 shadow-2xl overflow-hidden z-[1050] divide-y divide-border/40 max-h-72 overflow-y-auto animate-fade-in">
+              <div className="absolute top-full left-0 right-0 mt-1.5 glass-card bg-background/98 backdrop-blur-xl rounded-xl border border-border/90 shadow-2xl overflow-hidden z-[1050] divide-y divide-border/40 max-h-72 overflow-y-auto animate-fade-in">
                 {searchResults.map((res) => (
                   <button
-                    key={res.place_id}
+                    key={`${res.place_id}-${res.lat}-${res.lon}`}
                     onClick={() => handleSelectSearchResult(res)}
                     className="w-full px-4 py-2.5 text-left text-sm hover:bg-primary/15 transition-colors flex items-start gap-2.5 group"
                   >
                     <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-foreground truncate">{res.display_name.split(',')[0]}</p>
-                      <p className="text-xs text-muted-foreground truncate">{res.display_name}</p>
+                      <p className="font-semibold text-foreground truncate">{res.display_name}</p>
+                      {res.subtext && (
+                        <p className="text-xs text-muted-foreground truncate">{res.subtext}</p>
+                      )}
                       <span className="text-[10px] text-primary/90 font-mono font-bold">
                         {parseFloat(res.lat).toFixed(6)}°, {parseFloat(res.lon).toFixed(6)}°
                       </span>
@@ -1253,40 +1459,7 @@ export function FieldMap({
           </div>
         )}
 
-        {/* PRECISION NUDGE CONTROLS (FLOATING ON RIGHT) */}
-        {selectedField && (
-          <div className="absolute right-4 bottom-16 z-[1000] glass-card bg-background/95 backdrop-blur-md p-2 rounded-xl border border-border/80 shadow-2xl flex flex-col items-center gap-1">
-            <span className="text-[9px] font-bold font-mono text-muted-foreground uppercase">Nudge {nudgeStep}m</span>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleNudge('N')} title="Nudge North">
-              <ChevronUp className="w-4 h-4" />
-            </Button>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleNudge('W')} title="Nudge West">
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <div className="w-4 h-4 rounded-full bg-primary/20 flex items-center justify-center">
-                <Move className="w-2.5 h-2.5 text-primary" />
-              </div>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleNudge('E')} title="Nudge East">
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            </div>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleNudge('S')} title="Nudge South">
-              <ChevronDown className="w-4 h-4" />
-            </Button>
-            <div className="flex gap-1 mt-1">
-              {[1, 5, 20].map((step) => (
-                <button
-                  key={step}
-                  onClick={() => setNudgeStep(step)}
-                  className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${nudgeStep === step ? 'bg-primary text-primary-foreground font-bold' : 'text-muted-foreground hover:bg-secondary'}`}
-                >
-                  {step}m
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+
 
         {/* LIVE HIGH-PRECISION COORDINATES HUD (BOTTOM RIGHT) */}
         <div className="absolute bottom-4 right-16 z-[1000] hidden md:flex items-center gap-2">
@@ -1381,49 +1554,42 @@ export function FieldMap({
           </div>
         )}
 
-        {/* DYNAMIC CANVAS NDVI COLORMAP LEGEND & PIXEL INSPECTION */}
-        <div className="absolute bottom-4 left-4 z-[990] max-w-xs pointer-events-auto">
-          <div className="glass-card bg-[#0a121e]/95 backdrop-blur-xl p-3 rounded-2xl border border-white/15 shadow-2xl text-white space-y-1.5">
+        {/* COMPACT NDVI HEATMAP LEGEND PILL */}
+        <div className="absolute bottom-4 left-4 z-[990] pointer-events-auto">
+          <div className="glass-card bg-[#0a121e]/90 backdrop-blur-xl px-3 py-2 rounded-xl border border-white/10 shadow-lg text-white space-y-1.5 w-56">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="font-bold flex items-center gap-1.5 text-emerald-300 font-display">
-                <Leaf className="w-3.5 h-3.5 text-emerald-400" />
-                NDVI Heatmap Colormap
+              <span className="font-semibold flex items-center gap-1.5 text-emerald-400">
+                <Leaf className="w-3.5 h-3.5" />
+                NDVI Colormap
               </span>
               <button
                 onClick={() => setShowDynamicNdvi(!showDynamicNdvi)}
-                className="text-[10px] text-gray-400 hover:text-white underline font-mono"
+                className="text-[10px] text-gray-400 hover:text-white transition-colors font-mono"
               >
                 {showDynamicNdvi ? 'Hide' : 'Show'}
               </button>
             </div>
 
-            <div className="h-2 rounded-full overflow-hidden flex shadow-inner bg-black/60">
-              <div className="flex-1 bg-[#ef4444]" title="0.0 - 0.25: Bare Soil / Rock" />
-              <div className="flex-1 bg-[#f59e0b]" title="0.25 - 0.45: Early Crop Stress" />
-              <div className="flex-1 bg-[#84cc16]" title="0.45 - 0.65: Moderate Vegetative" />
-              <div className="flex-1 bg-[#22c55e]" title="0.65 - 0.82: Healthy Canopy" />
-              <div className="flex-1 bg-[#15803d]" title="0.82 - 1.00: Dense Biomass" />
+            <div className="h-1.5 rounded-full overflow-hidden flex bg-black/60 shadow-inner">
+              <div className="flex-1 bg-[#ef4444]" title="0.0 - 0.25: Bare" />
+              <div className="flex-1 bg-[#f59e0b]" title="0.25 - 0.45: Stress" />
+              <div className="flex-1 bg-[#84cc16]" title="0.45 - 0.65: Moderate" />
+              <div className="flex-1 bg-[#22c55e]" title="0.65 - 0.82: Healthy" />
+              <div className="flex-1 bg-[#15803d]" title="0.82 - 1.00: Dense" />
             </div>
 
-            <div className="flex justify-between text-[9px] font-mono text-gray-400">
-              <span className="text-red-400">0.0 (Bare)</span>
-              <span>0.35</span>
-              <span>0.65</span>
-              <span className="text-emerald-400">1.0 (Dense)</span>
+            <div className="flex justify-between text-[8px] font-mono text-gray-400">
+              <span className="text-red-400">0.0 Bare</span>
+              <span>0.50</span>
+              <span className="text-emerald-400">1.0 Dense</span>
             </div>
 
             {sampledPixel && (
-              <div className="mt-1 pt-1.5 border-t border-white/10 text-[10px] space-y-0.5 animate-in fade-in">
-                <div className="flex items-center justify-between font-mono">
-                  <span className="text-gray-400">Sampled Point:</span>
-                  <span className="font-bold text-emerald-300" style={{ color: sampledPixel.color }}>
-                    {sampledPixel.ndvi} ({sampledPixel.label.split(' ')[0]})
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-gray-400 font-mono text-[9px]">
-                  <span>Est. Chlorophyll:</span>
-                  <span className="text-white font-semibold">{sampledPixel.chlorophyllEstimate}</span>
-                </div>
+              <div className="pt-1 border-t border-white/10 text-[9px] flex items-center justify-between font-mono">
+                <span className="text-gray-400">Sample:</span>
+                <span className="font-bold" style={{ color: sampledPixel.color }}>
+                  {sampledPixel.ndvi} ({sampledPixel.label.split(' ')[0]})
+                </span>
               </div>
             )}
           </div>
