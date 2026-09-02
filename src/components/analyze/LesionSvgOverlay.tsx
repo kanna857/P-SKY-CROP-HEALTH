@@ -49,9 +49,9 @@ export function LesionSvgOverlay({ spots, enabled = true }: LesionSvgOverlayProp
           const colors = getSpotColor(spot.severity_score);
           const cx = Math.min(960, Math.max(40, spot.cx_norm * 1000));
           const cy = Math.min(960, Math.max(40, spot.cy_norm * 1000));
-          // Clamped tightly so no giant circle covers the leaf or goes outside
-          const rx = Math.min(32, Math.max(7, (spot.w_norm * 1000) / 2));
-          const ry = Math.min(32, Math.max(7, (spot.h_norm * 1000) / 2));
+          // Accurately scaled to the actual detected lesion bounding box across the whole image
+          const rx = Math.max(8, (spot.w_norm * 1000) / 2);
+          const ry = Math.max(8, (spot.h_norm * 1000) / 2);
           const isHovered = hoveredSpot?.id === spot.id;
 
           return (

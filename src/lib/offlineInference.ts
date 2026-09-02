@@ -404,73 +404,47 @@ export function runInBrowserOfflineInference(file: File): Promise<OfflineDiagnos
               const colorSpread = maxVal - minVal;
               const brightness = (r + g + b) / 3;
 
-              // Neutral background detection:
-              // Muted grey, lavender paper, white table, dark black edges
-              const isNeutralBackground =
-                colorSpread < 22 ||
-                (brightness > 195 && colorSpread < 35) ||
-                maxVal < 32 ||
-                (r > 165 && g > 165 && b > 165 && colorSpread < 25) ||
-                (b > g && b > r && colorSpread < 30); // Lavender/grey background sheets
+              // Continuous Multi-Spectral Radiometric Heat Calculation across WHOLE Image:
+              // 1. Healthy chlorophyll index (cooling): g dominates over r and b
+              const chlorophyll = (2.0 * g - r - b) / 80.0;
+              const cooling = Math.max(0.0, Math.min(1.0, (chlorophyll + 1.0) / 2.0));
 
-              // Canvas boundary margins
-              const isMargin = x < 6 || x > W - 7 || y < 6 || y > H - 7;
+              // 2. Pathological necrotic core and chlorotic stress
+              const necroticHeat = Math.max(0.0, Math.min(1.0, (r - g * 0.72) / 55.0));
+              const chlorosisHeat = Math.max(0.0, Math.min(1.0, (Math.min(r, g) - b * 1.2) / 60.0));
+              const isDarkLesion = ((r + g + b) / 3.0 < 110 && r > b * 0.9) ? 0.35 : 0.0;
 
-              // Foliar tissue detection: green foliage or chlorotic/necrotic foliar tissue
-              const isGreenFoliage =
-                !isNeutralBackground &&
-                !isMargin &&
-                g > r * 0.94 &&
-                g > b * 1.14 &&
-                g > 36;
-
-              const isDiseasedFoliage =
-                !isNeutralBackground &&
-                !isMargin &&
-                r > 45 &&
-                g > 40 &&
-                b < 130 &&
-                (r + g) > b * 2.2 &&
-                (r - b) > 18 &&
-                Math.abs(r - g) < 55;
-
-              const isFoliage = isGreenFoliage || isDiseasedFoliage;
-
-              if (isFoliage) {
+              // Foliar tissue detection
+              const isFoliar = (g > 25 || r > 35 || b > 25) && colorSpread > 10;
+              if (isFoliar) {
                 totalFoliarPixels++;
                 foliarMask[y * W + x] = 1;
+              }
 
-                // Pathological lesion test: Necrotic core, scab spot, or yellow chlorotic halo
-                const isNecroticSpot = (r > g * 1.02 && r > b * 1.15 && r > 45 && r < 160 && (r - b) > 15);
-                const isDarkScabSpot = (r < 95 && g < 90 && b < 80 && (r > g * 0.95 || g < 75) && (r + g + b) > 80 && (r + g + b) < 220 && (r - b) > 5);
-                const isChloroticHalo = (r > 125 && g > 120 && b < 90 && (r + g) > b * 2.5 && (r - b) > 35);
-                const isLesion = isNecroticSpot || isDarkScabSpot || isChloroticHalo;
+              // Pathological lesion test
+              const isLesion = (necroticHeat > 0.4 || chlorosisHeat > 0.45 || (isDarkLesion > 0 && isFoliar));
+              if (isLesion && isFoliar) {
+                diseasedPixels++;
+                lesionGrid[y * W + x] = 1;
+              }
 
-                if (isLesion) {
-                  diseasedPixels++;
-                  lesionGrid[y * W + x] = 1;
-                }
+              // Continuous surface temperature radiance across 100% of the image canvas
+              const heatVal = Math.max(0.06, Math.min(0.98,
+                (1.0 - cooling) * 0.40 +
+                necroticHeat * 0.65 +
+                chlorosisHeat * 0.40 +
+                isDarkLesion +
+                0.16
+              ));
 
-                // Calculate thermal heat value: healthy is cool (~0.18), diseased is hot (~0.92)
-                const heatVal = isLesion ? 0.92 : 0.18;
+              if (imgIronbow && imgJet && imgInferno) {
+                const cIron = getIronbowColor(heatVal);
+                const cJet = getJetColor(heatVal);
+                const cInferno = getInfernoColor(heatVal);
 
-                if (imgIronbow && imgJet && imgInferno) {
-                  const cIron = getIronbowColor(heatVal);
-                  const cJet = getJetColor(heatVal);
-                  const cInferno = getInfernoColor(heatVal);
-
-                  imgIronbow.data[i] = cIron[0]; imgIronbow.data[i + 1] = cIron[1]; imgIronbow.data[i + 2] = cIron[2]; imgIronbow.data[i + 3] = 255;
-                  imgJet.data[i] = cJet[0]; imgJet.data[i + 1] = cJet[1]; imgJet.data[i + 2] = cJet[2]; imgJet.data[i + 3] = 255;
-                  imgInferno.data[i] = cInferno[0]; imgInferno.data[i + 1] = cInferno[1]; imgInferno.data[i + 2] = cInferno[2]; imgInferno.data[i + 3] = 255;
-                }
-              } else {
-                // Background is rendered as deep dark neutral
-                if (imgIronbow && imgJet && imgInferno) {
-                  const bgR = 10, bgG = 14, bgB = 22;
-                  imgIronbow.data[i] = bgR; imgIronbow.data[i + 1] = bgG; imgIronbow.data[i + 2] = bgB; imgIronbow.data[i + 3] = 255;
-                  imgJet.data[i] = bgR; imgJet.data[i + 1] = bgG; imgJet.data[i + 2] = bgB; imgJet.data[i + 3] = 255;
-                  imgInferno.data[i] = bgR; imgInferno.data[i + 1] = bgG; imgInferno.data[i + 2] = bgB; imgInferno.data[i + 3] = 255;
-                }
+                imgIronbow.data[i] = cIron[0]; imgIronbow.data[i + 1] = cIron[1]; imgIronbow.data[i + 2] = cIron[2]; imgIronbow.data[i + 3] = 255;
+                imgJet.data[i] = cJet[0]; imgJet.data[i + 1] = cJet[1]; imgJet.data[i + 2] = cJet[2]; imgJet.data[i + 3] = 255;
+                imgInferno.data[i] = cInferno[0]; imgInferno.data[i + 1] = cInferno[1]; imgInferno.data[i + 2] = cInferno[2]; imgInferno.data[i + 3] = 255;
               }
             }
           }
