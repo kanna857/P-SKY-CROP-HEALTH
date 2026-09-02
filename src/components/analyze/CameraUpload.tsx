@@ -34,7 +34,9 @@ import {
   Columns,
   Flame,
   Zap,
-  Search
+  Search,
+  CloudUpload,
+  Database
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -53,7 +55,7 @@ import { LesionSpot } from '@/lib/types';
 import { LesionSvgOverlay } from './LesionSvgOverlay';
 import { ExplainableAIPanel, ExplainableAIData } from './ExplainableAIPanel';
 import { CropHealthRiskCard } from './CropHealthRiskCard';
-import { IntelligentAlertSystem } from './IntelligentAlertSystem';
+import { playMultilingualSpeech, stopCurrentSpeech } from '@/lib/multilingualAudio';
 
 export interface PredictionCandidate {
   raw_class: string;
@@ -89,6 +91,12 @@ export interface DiagnosisResult {
   lesionSpots?: LesionSpot[];
   isOfflineEdge?: boolean;
   explainableAI?: ExplainableAIData;
+  isSupported?: boolean;
+  cropDetected?: string;
+  unsupportedMessage?: string;
+  unsupportedNoticeTitle?: string;
+  unsupportedNoticeDesc?: string;
+  expansionRoadmap?: Array<{ crop: string; status: string; progress: number }>;
 }
 
 interface CameraUploadProps {
@@ -180,6 +188,29 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
         console.warn('Backend unavailable, falling back to In-Browser Edge AI:', backendErr);
         setBackendOnline(false);
         data = await runInBrowserOfflineInference(file);
+      }
+
+      // Check if uploaded crop is not one of the 38 supported classes
+      if (data.is_supported === false) {
+        const unsupportedResult: DiagnosisResult = {
+          isSupported: false,
+          cropDetected: data.crop_detected || 'Uncataloged Crop Variety',
+          unsupportedMessage: data.message || 'We are still uploading and training more crop data! It may take some time.',
+          unsupportedNoticeTitle: data.notice_title || 'Dataset Ingestion & Training in Progress 🔄',
+          unsupportedNoticeDesc: data.notice_description,
+          expansionRoadmap: data.expansion_pipeline || [],
+          plantName: data.crop_detected || 'Uncataloged Crop',
+          diseaseName: 'Data Uploading in Progress',
+          healthStatus: 'Under Research',
+          rawConfidence: 0.0,
+        };
+        setDiagnosis(unsupportedResult);
+        setScanStage('result');
+        toast({
+          title: 'Dataset Ingestion in Progress 🔄',
+          description: `We are currently uploading more data for ${data.crop_detected || 'this crop variety'}.`,
+        });
+        return;
       }
 
       const classKey = data.raw_class || data.disease;
@@ -470,18 +501,11 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
   };
 
   const stopAudio = () => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      setIsPlayingAudio(false);
-    }
+    stopCurrentSpeech();
+    setIsPlayingAudio(false);
   };
 
   const handleToggleVoice = () => {
-    if (!('speechSynthesis' in window)) {
-      toast({ title: 'Audio Unsupported', description: 'Speech synthesis is not supported on this browser.', variant: 'destructive' });
-      return;
-    }
-
     if (isPlayingAudio) {
       stopAudio();
       return;
@@ -503,19 +527,28 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
       speechText = `మొక్క: ${plant}. వ్యాధి: ${disease}. పరిస్థితి: ${diagnosis.healthStatus === 'Healthy' ? 'ఆరోగ్యకరమైనది' : 'వ్యాధి సోకింది'}. మందు: ${chemical}. మోతాదు: ${dosage}. నివారణ: ${recs}`;
     } else if (speechLanguage === 'ta-IN') {
       speechText = `பயிர்: ${plant}. நோய் கண்டறிதல்: ${disease}. பரிந்துரைக்கப்பட்ட மருந்து: ${chemical}. அளவு: ${dosage}. சிகிச்சை: ${recs}`;
+    } else if (speechLanguage === 'kn-IN') {
+      speechText = `ಬೆಳೆ: ${plant}. ರೋಗ: ${disease}. ಸ್ಥಿತಿ: ${diagnosis.healthStatus === 'Healthy' ? 'ಆರೋಗ್ಯಕರ' : 'ರೋಗಬಾಧಿತ'}. ಔಷಧ: ${chemical}. ಪ್ರಮಾಣ: ${dosage}. ಚಿಕಿತ್ಸೆ: ${recs}`;
+    } else if (speechLanguage === 'mr-IN') {
+      speechText = `पीक: ${plant}. रोग: ${disease}. स्थिती: ${diagnosis.healthStatus === 'Healthy' ? 'निरोगी' : 'संसर्गित'}. औषध: ${chemical}. प्रमाण: ${dosage}. उपचार: ${recs}`;
+    } else if (speechLanguage === 'bn-IN') {
+      speechText = `ফসল: ${plant}. রোগ: ${disease}. অবস্থা: ${diagnosis.healthStatus === 'Healthy' ? 'সুস্থ' : 'আক্রান্ত'}. ওষুধ: ${chemical}. মাত্রা: ${dosage}. প্রতিকার: ${recs}`;
+    } else if (speechLanguage === 'es-ES') {
+      speechText = `Cultivo: ${plant}. Diagnóstico: ${disease}. Estado: ${diagnosis.healthStatus === 'Healthy' ? 'Saludable' : 'Infectado'}. Tratamiento: ${chemical}. Dosis: ${dosage}. Recomendaciones: ${recs}`;
     } else {
       speechText = `Crop diagnosis result. Plant: ${plant}. Condition: ${disease}. Status: ${diagnosis.healthStatus}. Treatment: ${chemical}. Dosage: ${dosage}. Recommendations: ${recs}`;
     }
 
-    const utterance = new SpeechSynthesisUtterance(speechText);
-    utterance.lang = speechLanguage;
-    utterance.rate = 0.92;
-
-    utterance.onstart = () => setIsPlayingAudio(true);
-    utterance.onend = () => setIsPlayingAudio(false);
-    utterance.onerror = () => setIsPlayingAudio(false);
-
-    window.speechSynthesis.speak(utterance);
+    playMultilingualSpeech({
+      text: speechText,
+      lang: speechLanguage,
+      onStart: () => setIsPlayingAudio(true),
+      onEnd: () => setIsPlayingAudio(false),
+      onError: (err) => {
+        console.warn('Voice readout error:', err);
+        setIsPlayingAudio(false);
+      },
+    });
   };
 
   const prescriptionData: PrescriptionData | null = diagnosis ? {
@@ -612,6 +645,164 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
           </div>
         ) : (
           <div className="space-y-3">
+            {/* If the image is not from the 38 cataloged classes, show the dedicated Dataset Expansion notice */}
+            {diagnosis && diagnosis.isSupported === false ? (
+              <div className="space-y-4">
+                {/* Header Alert Banner */}
+                <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-blue-500/15 border border-amber-500/30 shadow-[0_0_30px_rgba(245,158,11,0.15)] relative overflow-hidden">
+                  <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse">
+                        <CloudUpload className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px] font-mono uppercase tracking-wider mb-0.5">
+                          Dataset Expansion & Model Retraining Active
+                        </Badge>
+                        <h4 className="text-base sm:text-lg font-bold text-white font-display">
+                          We are still uploading more data, it may take some time!
+                        </h4>
+                      </div>
+                    </div>
+
+                    <Badge variant="outline" className="text-[11px] border-white/20 text-gray-300 font-mono">
+                      Target: {diagnosis.cropDetected || 'Uncataloged Variety'}
+                    </Badge>
+                  </div>
+
+                  <p className="text-xs text-gray-300 leading-relaxed max-w-3xl">
+                    {diagnosis.unsupportedNoticeDesc ||
+                      `The uploaded foliar specimen (${diagnosis.cropDetected || 'this crop variety'}) is currently outside our initial 38 PlantVillage cataloged classes. Our agricultural AI research team is actively ingesting, annotating, and training deep vision models on new crop varieties. To ensure high clinical diagnostic precision (99%+ accuracy), model training and validation require time. Please check back soon as new weights are uploaded!`}
+                  </p>
+                </div>
+
+                {/* Dual Column: Preview Thumbnail + Expansion Pipeline */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Left Column: Uploaded Image Preview */}
+                  <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-black/60 aspect-square md:aspect-auto flex flex-col items-center justify-center p-4 text-center">
+                    <img
+                      src={preview}
+                      alt="Uploaded Specimen"
+                      className="max-h-52 w-auto object-contain rounded-xl shadow-lg border border-white/10"
+                    />
+                    <div className="mt-3">
+                      <p className="text-xs font-bold text-white truncate max-w-[220px]">
+                        {selectedFile?.name || 'Scanned Specimen'}
+                      </p>
+                      <p className="text-[10px] text-amber-400 font-mono mt-0.5">Status: Pending Dataset Ingestion</p>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Upcoming Crops Pipeline */}
+                  <div className="md:col-span-2 p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                        <Database className="w-4 h-4 text-emerald-400" />
+                        Upcoming Crops in Active Ingestion Pipeline
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-mono">Batch 2.8 Pipeline</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {(diagnosis.expansionRoadmap && diagnosis.expansionRoadmap.length > 0 ? diagnosis.expansionRoadmap : [
+                        { crop: 'Rice / Paddy', status: 'Blast & Sheath Blight Annotation', progress: 78 },
+                        { crop: 'Wheat', status: 'Rust & Powdery Mildew Ingestion', progress: 65 },
+                        { crop: 'Cotton', status: 'Bacterial Blight Collection', progress: 58 },
+                        { crop: 'Mango', status: 'Anthracnose & Malformation Validating', progress: 82 },
+                        { crop: 'Sugarcane', status: 'Red Rot & Smut Data Ingestion', progress: 50 },
+                        { crop: 'Banana', status: 'Sigatoka & Panama Disease Validation', progress: 62 },
+                      ]).map((item, idx) => (
+                        <div key={idx} className="p-2.5 rounded-xl bg-black/40 border border-white/10 space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-gray-200">{item.crop}</span>
+                            <span className="text-[10px] font-mono text-emerald-400">{item.progress}%</span>
+                          </div>
+                          <Progress value={item.progress} className="h-1 bg-white/10" />
+                          <p className="text-[10px] text-gray-400 truncate">{item.status}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Currently Supported 14 Crops & 38 Classes */}
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Currently Supported 14 Crops (38 PlantVillage Classes)
+                    </div>
+                    <span className="text-[10px] text-gray-400">38 Clinical AI Classes Active</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { name: 'Apple', count: '4 classes' },
+                      { name: 'Blueberry', count: '1 class' },
+                      { name: 'Cherry', count: '2 classes' },
+                      { name: 'Corn (Maize)', count: '4 classes' },
+                      { name: 'Grape', count: '4 classes' },
+                      { name: 'Orange', count: '1 class' },
+                      { name: 'Peach', count: '2 classes' },
+                      { name: 'Pepper (Bell)', count: '2 classes' },
+                      { name: 'Potato', count: '3 classes' },
+                      { name: 'Raspberry', count: '1 class' },
+                      { name: 'Soybean', count: '1 class' },
+                      { name: 'Squash', count: '1 class' },
+                      { name: 'Strawberry', count: '2 classes' },
+                      { name: 'Tomato', count: '10 classes' },
+                    ].map((crop, idx) => (
+                      <Badge
+                        key={idx}
+                        variant="outline"
+                        className="bg-emerald-500/10 border-emerald-500/30 text-emerald-300 text-[11px] py-1 px-2.5 gap-1"
+                      >
+                        <Leaf className="w-3 h-3 text-emerald-400" />
+                        <span className="font-semibold">{crop.name}</span>
+                        <span className="text-[10px] text-emerald-400/60 font-mono">({crop.count})</span>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-white/10">
+                  <div className="flex flex-wrap gap-2">
+                    <Link to="/chatbot">
+                      <Button
+                        size="sm"
+                        className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs gap-1.5 shadow-md"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Ask AI Agronomist About This Crop
+                      </Button>
+                    </Link>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsScannerOpen(true)}
+                      className="border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs gap-1.5"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-emerald-400" /> Open Live Scanner
+                    </Button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleClear}
+                      className="text-xs text-gray-400 hover:text-white"
+                    >
+                      Scan Another Photo
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
             {/* SIDE-BY-SIDE DUAL VIEW: Left Original Leaf + Right Thermal Heatmap (NO bounding boxes) */}
             {layoutMode === 'side-by-side' && diagnosis ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 relative">
@@ -906,6 +1097,8 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
                 </div>
               </div>
             )}
+            </>
+            )}
           </div>
         )}
 
@@ -950,7 +1143,7 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
         )}
 
         {/* Diagnosis Results Section */}
-        {diagnosis && (
+        {diagnosis && diagnosis.isSupported !== false && (
           <div className="space-y-4 pt-3 border-t border-white/10 animate-in fade-in-50 duration-500">
             {/* Primary Result Banner */}
             <div
@@ -1118,22 +1311,6 @@ export function CameraUpload({ cropType, fieldName, sampleImageTrigger }: Camera
               />
             </div>
 
-            {/* INTELLIGENT TELEGRAM ALERT (Image 3) */}
-            <IntelligentAlertSystem
-              alert={{
-                fieldName: `${diagnosis.plantName} Plot A`,
-                cropName: diagnosis.plantName || 'Crop',
-                riskLevel: diagnosis.healthStatus === 'Healthy' ? 'Moderate' : 'High',
-                ndviDropPct: diagnosis.explainableAI?.ndviDecreased?.decreasePct || 21,
-                ndwiDropPct: 17,
-                tempAnomalyCelsius: diagnosis.explainableAI?.thermalStressIncreased?.tempIncreaseCelsius || 3.4,
-                diseaseProbabilityPct: Math.round((diagnosis.rawConfidence || 0.87) * 100),
-                recommendedAction: diagnosis.healthStatus === 'Healthy'
-                  ? 'Maintain standard preventative fertigation schedule.'
-                  : `Inspect Zone 3 within 24 hours and apply ${diagnosis.treatment?.chemicalName || 'prescribed fungicide'}.`,
-                zoneTarget: 'Zone 3',
-              }}
-            />
 
             {/* Treatment Protocols & Tank Dosage Calculator */}
             {diagnosis.treatment && diagnosis.healthStatus !== 'Healthy' && (

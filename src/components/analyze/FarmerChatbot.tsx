@@ -82,6 +82,7 @@ export function FarmerChatbot({ field, weather }: FarmerChatbotProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: `${langInstruction}\n\n${userMessage.content}`,
+          language: selectedLang.code,
           field: field
             ? {
                 name: field.name,

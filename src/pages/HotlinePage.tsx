@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { 
   Phone, 
@@ -7,15 +7,14 @@ import {
   MicOff, 
   Volume2, 
   VolumeX, 
-  Sparkles, 
   Globe, 
-  User, 
-  ShieldCheck, 
   Send,
   MessageSquare,
-  Activity,
-  Zap,
-  Check
+  Check,
+  Hand,
+  Radio,
+  Sparkles,
+  HelpCircle
 } from 'lucide-react';
 import { 
   DOCTOR_PROFILES, 
@@ -24,8 +23,9 @@ import {
   HotlineMessage 
 } from '@/lib/voiceHotlineEngine';
 import { useToast } from '@/hooks/use-toast';
+import { playMultilingualSpeech, stopCurrentSpeech } from '@/lib/multilingualAudio';
 
-type SupportedLang = 'en' | 'hi' | 'pa' | 'te' | 'ta' | 'mr';
+type SupportedLang = 'en' | 'hi' | 'pa' | 'te' | 'ta' | 'mr' | 'kn' | 'bn' | 'es';
 
 export default function HotlinePage() {
   const { toast } = useToast();
@@ -37,32 +37,40 @@ export default function HotlinePage() {
   const [callDurationSec, setCallDurationSec] = useState<number>(0);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [micVolume, setMicVolume] = useState<number>(0);
   const [textInput, setTextInput] = useState<string>('');
   const [liveSpokenWords, setLiveSpokenWords] = useState<string>('');
   const [messages, setMessages] = useState<HotlineMessage[]>([]);
 
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const speechWatchdogRef = useRef<NodeJS.Timeout | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const animFrameRef = useRef<number | null>(null);
 
+  // Synchronous State Reference Guards
   const isCallActiveRef = useRef<boolean>(false);
   const isMutedRef = useRef<boolean>(false);
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isSpeakingRef = useRef<boolean>(false);
+  const isProcessingRef = useRef<boolean>(false);
   const activeLangRef = useRef<SupportedLang>('en');
+  const capturedSpeechRef = useRef<string>('');
 
+  useEffect(() => { isCallActiveRef.current = isCallActive; }, [isCallActive]);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
+  useEffect(() => { activeLangRef.current = selectedLang; }, [selectedLang]);
+
+  // Auto-scroll transcript to newest message
   useEffect(() => {
-    isCallActiveRef.current = isCallActive;
-  }, [isCallActive]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, liveSpokenWords]);
 
-  useEffect(() => {
-    isMutedRef.current = isMuted;
-  }, [isMuted]);
-
-  useEffect(() => {
-    activeLangRef.current = selectedLang;
-  }, [selectedLang]);
-
-  // Timer for call duration
+  // Call duration counter
   useEffect(() => {
     let interval: any = null;
     if (isCallActive) {
@@ -79,380 +87,139 @@ export default function HotlinePage() {
   useEffect(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       synthRef.current = window.speechSynthesis;
+      try {
+        window.speechSynthesis.getVoices();
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
+      } catch {}
     }
   }, []);
 
-  // Continuous speech listener with silence detection & auto-response
-  const startListeningLoop = () => {
-    if (!isCallActiveRef.current || isMutedRef.current) return;
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAllAudioAndRecognition();
+      stopMicAudioAnalyser();
+    };
+  }, []);
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      toast({
-        title: 'Microphone Not Supported',
-        description: 'Please use Google Chrome, Edge, or type in the box below.',
-        variant: 'destructive',
-      });
-      return;
-    }
+  // Setup real-time microphone volume visualizer
+  const startMicAudioAnalyser = async () => {
+    if (audioContextRef.current || !navigator.mediaDevices?.getUserMedia) return;
 
     try {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.abort(); } catch {}
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
 
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioContextRef.current = audioCtx;
 
-      const langMap: Record<SupportedLang, string> = {
-        en: 'en-IN',
-        hi: 'hi-IN',
-        pa: 'pa-IN',
-        te: 'te-IN',
-        ta: 'ta-IN',
-        mr: 'mr-IN'
-      };
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
 
-      recognition.lang = langMap[activeLangRef.current] || 'en-IN';
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-      let capturedSpeech = '';
-
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
-      recognition.onresult = (event: any) => {
-        let interimText = '';
-        let finalText = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const res = event.results[i];
-          if (res.isFinal) {
-            finalText += res[0].transcript;
-          } else {
-            interimText += res[0].transcript;
-          }
+      const checkVolume = () => {
+        if (!isCallActiveRef.current) return;
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
         }
-
-        const currentWords = (finalText || interimText).trim();
-        if (currentWords) {
-          capturedSpeech = currentWords;
-          setLiveSpokenWords(currentWords);
-
-          // Reset silence timer on every new speech chunk
-          if (silenceTimerRef.current) {
-            clearTimeout(silenceTimerRef.current);
-          }
-
-          // Auto-commit query when user pauses speaking for 1.3 seconds
-          silenceTimerRef.current = setTimeout(() => {
-            if (capturedSpeech.trim()) {
-              const queryToSend = capturedSpeech.trim();
-              capturedSpeech = '';
-              setLiveSpokenWords('');
-              try { recognition.stop(); } catch {}
-              handleProcessUserQuery(queryToSend);
-            }
-          }, 1300);
-        }
+        const avg = sum / dataArray.length;
+        // Normalize to 0-100 scale
+        const normalized = Math.min(100, Math.round((avg / 128) * 100));
+        setMicVolume(normalized);
+        animFrameRef.current = requestAnimationFrame(checkVolume);
       };
 
-      recognition.onerror = (event: any) => {
-        console.warn('Speech recognition status:', event.error);
-        if (event.error === 'not-allowed') {
-          setIsListening(false);
-          toast({
-            title: 'Microphone Permission Needed',
-            description: 'Please click the lock icon in your browser address bar to allow microphone, or type your question below.',
-            variant: 'destructive',
-          });
-        } else if (event.error !== 'no-speech') {
-          setIsListening(false);
-        }
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-        // If call is still active and AI is not speaking and user is not muted, restart listening smoothly
-        if (isCallActiveRef.current && !isMutedRef.current && !synthRef.current?.speaking) {
-          setTimeout(() => {
-            if (isCallActiveRef.current && !isMutedRef.current && !synthRef.current?.speaking) {
-              try { recognition.start(); } catch {}
-            }
-          }, 350);
-        }
-      };
-
-      recognition.start();
+      checkVolume();
     } catch (err) {
-      console.warn('Recognition start exception:', err);
-      setIsListening(false);
+      console.warn('Microphone audio analyser unavailable:', err);
     }
   };
 
-  // Fallback to Web Speech API
-  const fallbackBrowserSpeech = (cleanText: string) => {
-    if (!synthRef.current) {
-      setIsSpeaking(false);
-      if (isCallActiveRef.current && !isMutedRef.current) {
-        startListeningLoop();
-      }
-      return;
+  const stopMicAudioAnalyser = () => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
     }
-
-    try {
-      synthRef.current.cancel();
-      try { synthRef.current.resume(); } catch {}
-
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      const langMap: Record<SupportedLang, string> = {
-        en: 'en-IN',
-        hi: 'hi-IN',
-        pa: 'hi-IN',
-        te: 'te-IN',
-        ta: 'ta-IN',
-        mr: 'mr-IN'
-      };
-
-      utterance.lang = langMap[selectedLang] || 'en-IN';
-      utterance.rate = 0.95;
-      utterance.pitch = 1.0;
-
-      const voices = synthRef.current.getVoices();
-      const matchVoice = voices.find(v => v.lang.toLowerCase().startsWith(selectedLang)) ||
-                         voices.find(v => v.lang.includes('IN') || v.lang.includes('India'));
-      if (matchVoice) {
-        utterance.voice = matchVoice;
-      }
-
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-        setIsListening(false);
-      };
-
-      utterance.onend = () => {
-        setIsSpeaking(false);
-        if (isCallActiveRef.current && !isMutedRef.current) {
-          setTimeout(() => startListeningLoop(), 350);
-        }
-      };
-
-      utterance.onerror = () => {
-        setIsSpeaking(false);
-        if (isCallActiveRef.current && !isMutedRef.current) {
-          setTimeout(() => startListeningLoop(), 350);
-        }
-      };
-
-      synthRef.current.speak(utterance);
-    } catch {
-      setIsSpeaking(false);
-      if (isCallActiveRef.current && !isMutedRef.current) {
-        startListeningLoop();
-      }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(t => t.stop());
+      mediaStreamRef.current = null;
     }
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch {}
+      audioContextRef.current = null;
+    }
+    setMicVolume(0);
   };
 
-  // Text-To-Speech function with Native Google TTS Audio streaming + Web Speech API fallback
-  const speakText = async (text: string) => {
-    if (!isSpeakerOn) {
-      setTimeout(() => {
-        if (isCallActiveRef.current && !isMutedRef.current) {
-          startListeningLoop();
-        }
-      }, 500);
-      return;
-    }
-
-    // Stop any existing speech or audio
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      } catch {}
+  // Fully stop all audio playback, recognition, and timers
+  const stopAllAudioAndRecognition = useCallback(() => {
+    stopCurrentSpeech();
+    if (speechWatchdogRef.current) {
+      clearTimeout(speechWatchdogRef.current);
+      speechWatchdogRef.current = null;
     }
     if (synthRef.current) {
       try { synthRef.current.cancel(); } catch {}
     }
     if (recognitionRef.current) {
-      try { recognitionRef.current.abort(); } catch {}
-    }
-
-    setIsSpeaking(true);
-    setIsListening(false);
-
-    const cleanText = text.replace(/[*_#•\n]/g, ' ').replace(/\s+/g, ' ').trim();
-
-    // Strategy 1: Fluent regional Google TTS Audio Stream (te, hi, ta, mr, pa, en)
-    try {
-      const langCodeMap: Record<string, string> = {
-        te: 'te',
-        hi: 'hi',
-        ta: 'ta',
-        mr: 'mr',
-        pa: 'pa',
-        en: 'en'
-      };
-      const ttsLang = langCodeMap[selectedLang] || 'en';
-      // Deliver the first 190 characters in clear, natural native pronunciation
-      const speakSlice = cleanText.length > 190 ? cleanText.slice(0, 190) : cleanText;
-      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${ttsLang}&client=tw-ob&q=${encodeURIComponent(speakSlice)}`;
-
-      const audio = new Audio(ttsUrl);
-      audioRef.current = audio;
-
-      audio.onplay = () => {
-        setIsSpeaking(true);
-        setIsListening(false);
-      };
-
-      audio.onended = () => {
-        setIsSpeaking(false);
-        if (isCallActiveRef.current && !isMutedRef.current) {
-          setTimeout(() => startListeningLoop(), 350);
-        }
-      };
-
-      audio.onerror = () => {
-        console.warn('Audio stream error, falling back to browser Web Speech API');
-        fallbackBrowserSpeech(cleanText);
-      };
-
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-          console.warn('Audio play prevented or blocked:', err);
-          fallbackBrowserSpeech(cleanText);
-        });
-      }
-    } catch (err) {
-      console.warn('Google TTS exception, using Web Speech fallback:', err);
-      fallbackBrowserSpeech(cleanText);
-    }
-  };
-
-  // Start Call Handler
-  const handleStartCall = async () => {
-    setIsCallActive(true);
-    setIsMuted(false);
-    isCallActiveRef.current = true;
-    isMutedRef.current = false;
-
-    // Prompt for microphone permission up front
-    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
-      } catch (err) {
-        console.warn('Microphone permission warning:', err);
-      }
-    }
-
-    const greeting = activeDoctor.greetingText[selectedLang] || activeDoctor.greetingText.en;
-
-    const initialMsg: HotlineMessage = {
-      id: `msg-${Date.now()}`,
-      sender: 'doctor',
-      text: greeting,
-      timestamp: 'Just now'
-    };
-
-    setMessages([initialMsg]);
-    speakText(greeting);
-
-    toast({
-      title: `Connected to ${activeDoctor.name}`,
-      description: 'Call is live. The AI is listening to your microphone automatically.',
-    });
-  };
-
-  // End Call Handler
-  const handleEndCall = () => {
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-        audioRef.current.src = '';
+      try { 
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort(); 
       } catch {}
+      recognitionRef.current = null;
     }
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-    }
-    if (synthRef.current) {
-      synthRef.current.cancel();
-    }
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
-    }
-    setIsCallActive(false);
-    setIsListening(false);
     setIsSpeaking(false);
-    isCallActiveRef.current = false;
-    toast({
-      title: 'Call Ended',
-      description: `Duration: ${formatDuration(callDurationSec)}`
-    });
-  };
+    setIsListening(false);
+    setIsProcessing(false);
+    isSpeakingRef.current = false;
+    isProcessingRef.current = false;
+  }, []);
 
-  // Speech Recognition Toggle
-  const handleToggleMic = () => {
-    if (!isCallActive) {
-      handleStartCall();
-      return;
-    }
+  // Handle Process User Query (from voice, text input, or quick pills)
+  const handleProcessUserQuery = useCallback(async (queryText: string) => {
+    const trimmed = queryText.trim();
+    if (!trimmed || trimmed.length < 2) return;
 
-    if (isListening) {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch {}
-      }
-      setIsListening(false);
-      setIsMuted(true);
-      toast({
-        title: 'Microphone Muted',
-        description: 'Tap mic button again to resume listening.',
-      });
-    } else {
-      setIsMuted(false);
-      startListeningLoop();
-      toast({
-        title: '🎙️ Listening... Speak Now',
-        description: 'Ask any question in your language.'
-      });
-    }
-  };
+    // Lock recognition while doctor processes
+    setIsProcessing(true);
+    isProcessingRef.current = true;
+    setIsListening(false);
 
-  // Process Query (from voice or text input)
-  const handleProcessUserQuery = async (queryText: string) => {
-    if (!queryText.trim()) return;
-
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-    }
     if (recognitionRef.current) {
-      try { recognitionRef.current.abort(); } catch {}
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch {}
+      recognitionRef.current = null;
     }
 
     const userMsg: HotlineMessage = {
       id: `user-${Date.now()}`,
       sender: 'farmer',
-      text: queryText,
+      text: trimmed,
       timestamp: 'Just now'
     };
 
     setMessages(prev => [...prev, userMsg]);
     setTextInput('');
     setLiveSpokenWords('');
+    capturedSpeechRef.current = '';
 
-    // Fetch Agronomist response from FastAPI backend or comprehensive local brain
     let reply = '';
     try {
       const res = await fetch('http://localhost:8000/ask-agronomist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: queryText,
+          query: trimmed,
           language: selectedLang,
           doctor_id: activeDoctor.id
         })
@@ -467,9 +234,8 @@ export default function HotlinePage() {
       console.warn('Backend agronomist query fallback to local engine:', err);
     }
 
-    // Comprehensive client-side fallback
     if (!reply) {
-      reply = generateDoctorSpeechResponse(queryText, selectedLang);
+      reply = generateDoctorSpeechResponse(trimmed, selectedLang);
     }
 
     const doctorMsg: HotlineMessage = {
@@ -480,7 +246,297 @@ export default function HotlinePage() {
     };
 
     setMessages(prev => [...prev, doctorMsg]);
-    speakText(reply);
+    setIsProcessing(false);
+    isProcessingRef.current = false;
+
+    // Doctor speaks prescription
+    speakDoctorResponse(reply);
+  }, [activeDoctor.id, selectedLang]);
+
+  // Start a clean, glitch-free voice recognition session
+  const startCleanListeningSession = useCallback(() => {
+    if (!isCallActiveRef.current || isMutedRef.current || isSpeakingRef.current || isProcessingRef.current) {
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast({
+        title: 'Microphone API Unavailable',
+        description: 'Web Speech is not supported in this browser. Please use the quick buttons or type below.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.onend = null;
+          recognitionRef.current.abort();
+        } catch {}
+      }
+
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+
+      const langMap: Record<SupportedLang, string> = {
+        en: 'en-IN',
+        hi: 'hi-IN',
+        pa: 'pa-IN',
+        te: 'te-IN',
+        ta: 'ta-IN',
+        mr: 'mr-IN',
+        kn: 'kn-IN',
+        bn: 'bn-IN',
+        es: 'es-ES'
+      };
+
+      recognition.lang = langMap[activeLangRef.current] || 'en-IN';
+      // Use continuous = false to prevent Chrome's rapid no-speech disconnect loop!
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      capturedSpeechRef.current = '';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        if (isSpeakingRef.current || isProcessingRef.current) return;
+
+        let interimText = '';
+        let finalText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            finalText += res[0].transcript;
+          } else {
+            interimText += res[0].transcript;
+          }
+        }
+
+        const recognized = (finalText || interimText).trim();
+        if (recognized) {
+          capturedSpeechRef.current = recognized;
+          setLiveSpokenWords(recognized);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        if (event.error === 'not-allowed') {
+          setIsListening(false);
+          toast({
+            title: 'Microphone Permission Needed',
+            description: 'Please allow microphone access in your address bar to speak.',
+            variant: 'destructive',
+          });
+        } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          console.warn('Speech recognition status:', event.error);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        // If we captured speech, auto-submit it cleanly
+        if (capturedSpeechRef.current.trim()) {
+          const toSubmit = capturedSpeechRef.current.trim();
+          capturedSpeechRef.current = '';
+          setLiveSpokenWords('');
+          handleProcessUserQuery(toSubmit);
+        }
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.warn('Recognition start exception:', err);
+      setIsListening(false);
+    }
+  }, [handleProcessUserQuery, toast]);
+
+  // Doctor speech completion callback
+  const handleAiSpeechCompleted = useCallback(() => {
+    if (speechWatchdogRef.current) {
+      clearTimeout(speechWatchdogRef.current);
+      speechWatchdogRef.current = null;
+    }
+
+    setIsSpeaking(false);
+    isSpeakingRef.current = false;
+
+    // Inform farmer they can speak
+    toast({
+      title: '🎙️ Doctor Finished • Speak Now',
+      description: 'Tap "Click to Speak" or ask any question.',
+    });
+  }, [toast]);
+
+  // Doctor voice playback engine
+  const speakDoctorResponse = useCallback((text: string) => {
+    if (!isSpeakerOn) {
+      handleAiSpeechCompleted();
+      return;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch {}
+      recognitionRef.current = null;
+    }
+
+    setIsSpeaking(true);
+    isSpeakingRef.current = true;
+    setIsListening(false);
+    setLiveSpokenWords('');
+    capturedSpeechRef.current = '';
+
+    // Stop previous audio
+    stopCurrentSpeech();
+
+    // Stream high-fidelity native vernacular audio for all 9 regional languages
+    playMultilingualSpeech({
+      text,
+      lang: selectedLang,
+      onStart: () => {
+        setIsSpeaking(true);
+        isSpeakingRef.current = true;
+        setIsListening(false);
+      },
+      onEnd: () => {
+        handleAiSpeechCompleted();
+      },
+      onError: (err) => {
+        console.warn('Speech playback issue:', err);
+        handleAiSpeechCompleted();
+      }
+    });
+  }, [handleAiSpeechCompleted, isSpeakerOn, selectedLang]);
+
+  // Start Call Handler
+  const handleStartCall = () => {
+    stopAllAudioAndRecognition();
+
+    setIsCallActive(true);
+    setIsMuted(false);
+    isCallActiveRef.current = true;
+    isMutedRef.current = false;
+
+    startMicAudioAnalyser();
+
+    const greeting = activeDoctor.greetingText[selectedLang] || activeDoctor.greetingText.en;
+
+    const initialMsg: HotlineMessage = {
+      id: `msg-${Date.now()}`,
+      sender: 'doctor',
+      text: greeting,
+      timestamp: 'Just now'
+    };
+
+    setMessages([initialMsg]);
+    speakDoctorResponse(greeting);
+
+    toast({
+      title: `Connected with ${activeDoctor.name} 📞`,
+      description: 'Call is live. Doctor is introducing themselves.',
+    });
+  };
+
+  // End Call Handler
+  const handleEndCall = () => {
+    stopAllAudioAndRecognition();
+    stopMicAudioAnalyser();
+    setIsCallActive(false);
+    isCallActiveRef.current = false;
+    setLiveSpokenWords('');
+    capturedSpeechRef.current = '';
+
+    toast({
+      title: 'Call Disconnected',
+      description: `Duration: ${formatDuration(callDurationSec)}`
+    });
+  };
+
+  // Push-to-Talk / Tap to Speak Button: Starts listening to farmer directly
+  const handleTapToSpeak = () => {
+    if (!isCallActive) {
+      handleStartCall();
+      return;
+    }
+
+    // Stop doctor speech immediately
+    stopCurrentSpeech();
+    if (synthRef.current) {
+      try { synthRef.current.cancel(); } catch {}
+    }
+    if (speechWatchdogRef.current) {
+      clearTimeout(speechWatchdogRef.current);
+    }
+
+    setIsSpeaking(false);
+    isSpeakingRef.current = false;
+    setIsProcessing(false);
+    isProcessingRef.current = false;
+    setIsMuted(false);
+    isMutedRef.current = false;
+
+    // If already listening, submit what we have
+    if (isListening) {
+      if (capturedSpeechRef.current.trim()) {
+        const toSubmit = capturedSpeechRef.current.trim();
+        capturedSpeechRef.current = '';
+        setLiveSpokenWords('');
+        if (recognitionRef.current) {
+          try { recognitionRef.current.stop(); } catch {}
+        }
+        handleProcessUserQuery(toSubmit);
+      } else {
+        if (recognitionRef.current) {
+          try { recognitionRef.current.stop(); } catch {}
+        }
+        setIsListening(false);
+      }
+      return;
+    }
+
+    // Start fresh recognition session
+    startCleanListeningSession();
+    toast({
+      title: '🎙️ Listening... Speak Now',
+      description: 'Speak your question clearly into the microphone.',
+    });
+  };
+
+  // Toggle Mute
+  const handleToggleMic = () => {
+    if (!isCallActive) {
+      handleStartCall();
+      return;
+    }
+
+    if (!isMuted) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+      }
+      setIsListening(false);
+      setIsMuted(true);
+      isMutedRef.current = true;
+      toast({
+        title: 'Microphone Muted 🔇',
+        description: 'Microphone is temporarily disabled.',
+      });
+    } else {
+      setIsMuted(false);
+      isMutedRef.current = false;
+      toast({
+        title: 'Microphone Unmuted',
+        description: 'Tap "Click to Speak" whenever you want to talk.',
+      });
+    }
   };
 
   const formatDuration = (seconds: number) => {
@@ -505,7 +561,7 @@ export default function HotlinePage() {
               </h1>
             </div>
             <p className="text-xs text-gray-300 font-mono mt-1">
-              Interactive 24/7 Spoken Voice Consultation in Regional Indian & Global Languages
+              Live Spoken Agro-Clinic with Push-to-Talk & Real-Time Prescription Transcript
             </p>
           </div>
 
@@ -514,7 +570,16 @@ export default function HotlinePage() {
             <Globe className="w-4 h-4 text-emerald-400 ml-2" />
             <select
               value={selectedLang}
-              onChange={(e) => setSelectedLang(e.target.value as any)}
+              onChange={(e) => {
+                const newLang = e.target.value as SupportedLang;
+                setSelectedLang(newLang);
+                if (isCallActive) {
+                  toast({
+                    title: `Language: ${newLang.toUpperCase()}`,
+                    description: 'Doctor will respond in your chosen language.'
+                  });
+                }
+              }}
               className="bg-transparent text-white text-xs font-mono font-bold px-2 py-1 outline-none cursor-pointer"
             >
               <option value="en" className="bg-[#0b121e]">English (Indian)</option>
@@ -522,39 +587,73 @@ export default function HotlinePage() {
               <option value="pa" className="bg-[#0b121e]">ਪੰਜਾਬੀ (Punjabi)</option>
               <option value="te" className="bg-[#0b121e]">తెలుగు (Telugu)</option>
               <option value="ta" className="bg-[#0b121e]">தமிழ் (Tamil)</option>
+              <option value="kn" className="bg-[#0b121e]">ಕನ್ನಡ (Kannada)</option>
               <option value="mr" className="bg-[#0b121e]">मराठी (Marathi)</option>
+              <option value="bn" className="bg-[#0b121e]">বাংলা (Bengali)</option>
+              <option value="es" className="bg-[#0b121e]">Español (Spanish)</option>
             </select>
           </div>
         </div>
 
-        {/* Main Grid: Dialer Phone Interface (5 Cols) + Live Conversation Transcript (7 Cols) */}
+        {/* Main Grid: Phone Interface (5 Cols) + Live Conversation Transcript (7 Cols) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* Left Column: Smartphone Call Interface (5 Cols) */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="relative p-6 sm:p-8 rounded-[40px] bg-gradient-to-b from-[#101b2d] via-[#09111c] to-[#060a10] border-2 border-white/15 shadow-[0_0_50px_rgba(0,0,0,0.8)] backdrop-blur-2xl text-center space-y-6 overflow-hidden">
+            <div className="relative p-6 sm:p-8 rounded-[40px] bg-gradient-to-b from-[#101b2d] via-[#09111c] to-[#060a10] border-2 border-white/15 shadow-[0_0_50px_rgba(0,0,0,0.8)] backdrop-blur-2xl text-center space-y-5 overflow-hidden">
               
-              {/* Top Speaker / Camera Notch */}
-              <div className="w-20 h-4 rounded-full bg-black/80 mx-auto border border-white/10 mb-2" />
+              {/* Top Speaker Notch */}
+              <div className="w-20 h-3 rounded-full bg-black/80 mx-auto border border-white/10" />
 
-              {/* Call Status Badge */}
-              <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full text-xs font-mono font-bold bg-white/5 border border-white/10">
+              {/* Dynamic Call Status Badge */}
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-mono font-bold bg-black/60 border border-white/15">
                 {isCallActive ? (
-                  <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                    <span className="text-emerald-400">CALL ACTIVE • {formatDuration(callDurationSec)}</span>
-                  </>
+                  isSpeaking ? (
+                    <>
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                      <span className="text-cyan-300">DOCTOR SPEAKING • {formatDuration(callDurationSec)}</span>
+                    </>
+                  ) : isProcessing ? (
+                    <>
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                      <span className="text-amber-300">PREPARING PRESCRIPTION...</span>
+                    </>
+                  ) : isListening ? (
+                    <>
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-emerald-400">LISTENING TO YOU • SPEAK NOW</span>
+                    </>
+                  ) : isMuted ? (
+                    <>
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      <span className="text-amber-400">MICROPHONE MUTED</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                      <span className="text-emerald-400">CALL ACTIVE • TAP TO SPEAK</span>
+                    </>
+                  )
                 ) : (
                   <span className="text-gray-400">HOTLINE STANDBY • TOLL FREE</span>
                 )}
               </div>
 
-              {/* Doctor Avatar with Pulsing Audio Ring */}
+              {/* Doctor Avatar with Pulsing Ring */}
               <div className="relative mx-auto w-28 h-28">
                 {isSpeaking && (
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500 via-cyan-400 to-rose-500 animate-ping opacity-30 pointer-events-none" />
+                  <div className="absolute -inset-2 rounded-full bg-cyan-400/20 animate-ping pointer-events-none" />
                 )}
-                <div className="w-full h-full rounded-full p-1 bg-gradient-to-tr from-emerald-400 via-teal-300 to-cyan-400 shadow-[0_0_30px_rgba(16,185,129,0.4)]">
+                {isListening && (
+                  <div className="absolute -inset-2 rounded-full bg-emerald-400/25 animate-pulse pointer-events-none" />
+                )}
+                <div className={`w-full h-full rounded-full p-1 shadow-2xl transition-all duration-300 ${
+                  isSpeaking 
+                    ? 'bg-gradient-to-tr from-cyan-400 to-emerald-400 shadow-[0_0_35px_rgba(6,182,212,0.5)] scale-105'
+                    : isListening
+                    ? 'bg-gradient-to-tr from-emerald-400 to-green-300 shadow-[0_0_35px_rgba(16,185,129,0.5)] scale-105'
+                    : 'bg-white/10'
+                }`}>
                   <img
                     src={activeDoctor.avatar}
                     alt={activeDoctor.name}
@@ -564,7 +663,7 @@ export default function HotlinePage() {
               </div>
 
               {/* Doctor Details */}
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 <h3 className="text-xl font-bold text-white font-display">
                   {activeDoctor.name}
                 </h3>
@@ -576,20 +675,21 @@ export default function HotlinePage() {
                 </p>
               </div>
 
-              {/* Live Spoken Speech Display Badge */}
-              {isListening && (
-                <div className="p-3 rounded-2xl bg-gradient-to-r from-rose-950/60 to-[#180a14] border border-rose-500/50 text-xs font-mono text-rose-300 animate-pulse space-y-2 shadow-[0_0_20px_rgba(244,63,94,0.25)]">
+              {/* Live Spoken Words Preview */}
+              {isCallActive && (isListening || liveSpokenWords) && (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/80 to-black border border-emerald-500/40 text-xs font-mono text-emerald-300 space-y-2 shadow-[0_0_25px_rgba(16,185,129,0.2)]">
                   <div className="flex items-center justify-between font-bold text-[11px]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                      <span>LISTENING IN REAL-TIME</span>
+                    <div className="flex items-center gap-1.5 text-emerald-400">
+                      <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+                      <span>{isListening ? 'HEARING YOUR VOICE...' : 'CAPTURED QUESTION'}</span>
                     </div>
                     <span className="text-[10px] text-gray-400 uppercase font-mono">
                       {selectedLang}
                     </span>
                   </div>
+
                   {liveSpokenWords ? (
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <div className="text-white font-sans text-xs font-semibold italic bg-black/60 p-2.5 rounded-xl border border-white/10 text-left">
                         "{liveSpokenWords}"
                       </div>
@@ -598,93 +698,121 @@ export default function HotlinePage() {
                         onClick={() => {
                           const toSend = liveSpokenWords;
                           setLiveSpokenWords('');
-                          try { recognitionRef.current?.stop(); } catch {}
                           handleProcessUserQuery(toSend);
                         }}
-                        className="w-full py-1.5 text-[11px] font-bold bg-rose-500 hover:bg-rose-400 text-white rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95"
+                        className="w-full py-2 text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95"
                       >
-                        <Check className="w-3.5 h-3.5" /> Submit Spoken Question
+                        <Check className="w-4 h-4" /> Send This Question Now
                       </button>
                     </div>
                   ) : (
-                    <div className="text-[11px] text-gray-300 text-left">
-                      Speak your question into microphone now...
+                    <div className="text-[11px] text-gray-300 text-left py-1 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                      <span>Speak your question now... tap "Done" when finished.</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Dancing Audio Waveform Visualizer */}
+              {/* Interrupt banner while doctor is speaking */}
+              {isCallActive && isSpeaking && (
+                <div className="p-3 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 flex items-center justify-between gap-2 text-xs">
+                  <span className="text-cyan-300 flex items-center gap-1.5 font-mono text-[11px]">
+                    <Volume2 className="w-4 h-4 animate-bounce text-cyan-400" />
+                    Doctor speaking...
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleTapToSpeak}
+                    className="px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-[11px] font-bold border border-emerald-500/40 transition-all"
+                  >
+                    Interrupt & Speak
+                  </button>
+                </div>
+              )}
+
+              {/* Real-time Dynamic Audio Visualizer */}
               <div className="flex items-center justify-center gap-1.5 h-10 py-1">
-                {[40, 75, 95, 60, 85, 100, 70, 50, 90, 65, 80, 45].map((height, i) => (
-                  <div
-                    key={i}
-                    className={`w-1 rounded-full transition-all duration-150 ${
-                      isSpeaking
-                        ? 'bg-gradient-to-t from-emerald-400 to-cyan-300 animate-pulse'
-                        : isListening
-                        ? 'bg-gradient-to-t from-rose-500 to-amber-400 animate-pulse'
-                        : 'bg-white/10'
-                    }`}
-                    style={{
-                      height: isSpeaking || isListening ? `${height}%` : '20%',
-                      animationDelay: `${i * 0.08}s`
-                    }}
-                  />
-                ))}
+                {[30, 60, 90, 50, 80, 100, 75, 45, 85, 55, 70, 40].map((baseHeight, i) => {
+                  const dynamicHeight = isListening && micVolume > 5
+                    ? Math.min(100, Math.max(20, Math.round(micVolume * 1.2 * ((i % 3) + 0.8))))
+                    : isSpeaking
+                    ? baseHeight
+                    : 20;
+
+                  return (
+                    <div
+                      key={i}
+                      className={`w-1.5 rounded-full transition-all duration-100 ${
+                        isSpeaking
+                          ? 'bg-gradient-to-t from-cyan-400 to-emerald-300 animate-pulse'
+                          : isListening
+                          ? 'bg-gradient-to-t from-emerald-400 to-green-300'
+                          : 'bg-white/10'
+                      }`}
+                      style={{
+                        height: `${dynamicHeight}%`,
+                        animationDelay: `${i * 0.08}s`
+                      }}
+                    />
+                  );
+                })}
               </div>
 
-              {/* Call Control Action Buttons */}
-              <div className="grid grid-cols-3 gap-3 pt-2">
-                {/* Mute */}
+              {/* Primary Call Controls */}
+              <div className="grid grid-cols-3 gap-3 pt-1">
+                {/* Mute Button */}
                 <button
-                  onClick={() => setIsMuted(!isMuted)}
+                  onClick={handleToggleMic}
                   disabled={!isCallActive}
-                  className={`p-4 rounded-3xl flex flex-col items-center gap-1 text-xs font-mono transition-all border ${
+                  className={`p-3.5 rounded-2xl flex flex-col items-center gap-1 text-xs font-mono transition-all border ${
                     isMuted
                       ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                       : 'bg-white/5 text-gray-300 hover:text-white border-white/10 hover:bg-white/10'
                   }`}
+                  title={isMuted ? "Unmute Microphone" : "Mute Microphone"}
                 >
-                  {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  {isMuted ? <MicOff className="w-5 h-5 text-amber-400" /> : <Mic className="w-5 h-5" />}
                   <span className="text-[10px]">{isMuted ? 'Muted' : 'Mute'}</span>
                 </button>
 
-                {/* Primary Voice Mic (Push to Speak) */}
+                {/* Primary Tap to Speak Button */}
                 <button
-                  onClick={handleToggleMic}
+                  onClick={handleTapToSpeak}
                   disabled={!isCallActive}
-                  className={`p-4 rounded-3xl flex flex-col items-center gap-1 text-xs font-mono transition-all border ${
+                  className={`p-3.5 rounded-2xl flex flex-col items-center gap-1 text-xs font-mono transition-all border ${
                     isListening
-                      ? 'bg-rose-600 text-white border-rose-400 shadow-[0_0_25px_rgba(244,63,94,0.6)] animate-pulse'
-                      : 'bg-gradient-to-r from-emerald-500 to-teal-400 text-white border-emerald-400/50 shadow-md hover:scale-105'
+                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.6)] font-bold scale-105'
+                      : 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
                   }`}
+                  title="Click to speak your question"
                 >
-                  <Mic className="w-5 h-5" />
-                  <span className="text-[10px] font-bold">{isListening ? 'Listening...' : 'Speak Voice'}</span>
+                  <Hand className="w-5 h-5" />
+                  <span className="text-[10px] font-bold">{isListening ? 'Done Speaking' : 'Click to Speak'}</span>
                 </button>
 
                 {/* Speaker Toggle */}
                 <button
                   onClick={() => setIsSpeakerOn(!isSpeakerOn)}
                   disabled={!isCallActive}
-                  className={`p-4 rounded-3xl flex flex-col items-center gap-1 text-xs font-mono transition-all border ${
+                  className={`p-3.5 rounded-2xl flex flex-col items-center gap-1 text-xs font-mono transition-all border ${
                     !isSpeakerOn
                       ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                       : 'bg-white/5 text-gray-300 hover:text-white border-white/10 hover:bg-white/10'
                   }`}
+                  title={isSpeakerOn ? "Turn Speaker Off" : "Turn Speaker On"}
                 >
-                  {isSpeakerOn ? <Volume2 className="w-5 h-5 text-emerald-400" /> : <VolumeX className="w-5 h-5" />}
+                  {isSpeakerOn ? <Volume2 className="w-5 h-5 text-emerald-400" /> : <VolumeX className="w-5 h-5 text-rose-400" />}
                   <span className="text-[10px]">{isSpeakerOn ? 'Speaker ON' : 'Speaker OFF'}</span>
                 </button>
               </div>
 
-              {/* Big Green Start / Red End Call Button */}
-              <div className="pt-2">
+              {/* Big Start / End Call Button */}
+              <div className="pt-1">
                 {isCallActive ? (
                   <button
                     onClick={handleEndCall}
-                    className="w-full py-4 rounded-3xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-mono font-extrabold text-sm flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(244,63,94,0.4)] transition-all hover:scale-105"
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-mono font-extrabold text-sm flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(244,63,94,0.4)] transition-all hover:scale-[1.02]"
                   >
                     <PhoneOff className="w-5 h-5" />
                     <span>END CALL NOW</span>
@@ -692,7 +820,7 @@ export default function HotlinePage() {
                 ) : (
                   <button
                     onClick={handleStartCall}
-                    className="w-full py-4 rounded-3xl bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 hover:from-emerald-400 hover:to-teal-300 text-black font-mono font-extrabold text-sm flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(16,185,129,0.4)] transition-all hover:scale-105"
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 hover:from-emerald-400 hover:to-teal-300 text-black font-mono font-extrabold text-sm flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(16,185,129,0.4)] transition-all hover:scale-[1.02]"
                   >
                     <Phone className="w-5 h-5" />
                     <span>START FREE CALL</span>
@@ -702,10 +830,10 @@ export default function HotlinePage() {
 
             </div>
 
-            {/* Quick Speed-Dial Specialists */}
+            {/* Specialist Speed Dial Cards */}
             <div className="p-4 rounded-3xl bg-[#0c1422]/90 border border-white/10 space-y-2">
               <span className="text-[11px] font-mono text-gray-400 font-bold uppercase tracking-wider block mb-1">
-                Emergency Speed Dial Desks:
+                Emergency Speed Dial Specialists:
               </span>
               <div className="grid grid-cols-3 gap-2">
                 {DOCTOR_PROFILES.map((doc) => (
@@ -731,7 +859,7 @@ export default function HotlinePage() {
             </div>
           </div>
 
-          {/* Right Column: Live Spoken Transcript & Typed Query (7 Cols) */}
+          {/* Right Column: Live Spoken Transcript & Quick Questions (7 Cols) */}
           <div className="lg:col-span-7 space-y-4">
             <div className="p-6 rounded-3xl bg-[#0c1422]/95 border border-white/10 shadow-2xl backdrop-blur-2xl space-y-4 min-h-[500px] flex flex-col justify-between">
               
@@ -760,11 +888,11 @@ export default function HotlinePage() {
                           <img
                             src={activeDoctor.avatar}
                             alt="Doctor"
-                            className="w-8 h-8 rounded-full object-cover shrink-0 border border-emerald-500/40"
+                            className="w-8 h-8 rounded-full object-cover shrink-0 border border-emerald-500/40 mt-1"
                           />
                         )}
                         <div
-                          className={`max-w-md p-3.5 rounded-3xl text-xs leading-relaxed font-sans ${
+                          className={`max-w-md p-3.5 rounded-2xl text-xs leading-relaxed font-sans ${
                             msg.sender === 'farmer'
                               ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-br-none shadow-md'
                               : 'bg-black/50 border border-white/10 text-gray-200 rounded-bl-none shadow-md'
@@ -786,10 +914,11 @@ export default function HotlinePage() {
                       <p className="text-xs">Press "START FREE CALL" to connect with the Agronomist.</p>
                     </div>
                   )}
+                  <div ref={messagesEndRef} />
                 </div>
               </div>
 
-              {/* Typed Message Fallback Input */}
+              {/* Typed Message Fallback Input & Quick Questions */}
               <div className="pt-3 border-t border-white/10 space-y-2">
                 <form
                   onSubmit={(e) => {
@@ -805,49 +934,48 @@ export default function HotlinePage() {
                     type="text"
                     value={textInput}
                     onChange={(e) => setTextInput(e.target.value)}
-                    placeholder={isCallActive ? "Or type your crop question here..." : "Type question & auto-start call..."}
+                    placeholder={isCallActive ? "Or type your crop question here (press Enter)..." : "Type question & auto-start call..."}
                     className="flex-1 bg-black/60 border border-white/15 rounded-full px-4 py-2.5 text-xs text-white placeholder:text-gray-500 outline-none focus:border-emerald-400 font-sans"
                   />
                   <button
                     type="submit"
                     disabled={!textInput.trim()}
                     className="p-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-bold transition-all shadow-md"
+                    title="Send Question"
                   >
                     <Send className="w-4 h-4" />
                   </button>
                 </form>
 
-                {/* Quick Topic Pills */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] font-mono text-gray-400">
-                  <span>Quick Questions:</span>
-                  {[
-                    'నా పొలంలో సమస్య ఏమిటి?',
-                    'పత్తిలో గులాబీ రంగు పురుగు మందు ఏమిటి?',
-                    'వరి అగ్గితెగులు నివారణ',
-                    'ఆకులు పసుపు రంగులోకి మారుతున్నాయి',
-                    'పూత రాలకుండా ఏ మందు పిచికారీ చేయాలి?',
-                    'खेत में क्या समस्या है?',
-                    'कपास में गुलाबी सुंडी का इलाज',
-                    'धान में ब्लास्ट रोग की दवा',
-                    'What is the problem in my field?',
-                    'Cotton pink bollworm spray dosage',
-                    'Tomato leaf curl remedy',
-                    'Wheat rust spray dosage',
-                    'Today APMC mandi rates',
-                    'Is spray safe today?'
-                  ].map((chip) => (
-                    <button
-                      key={chip}
-                      type="button"
-                      onClick={() => {
-                        if (!isCallActive) handleStartCall();
-                        handleProcessUserQuery(chip);
-                      }}
-                      className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-gray-300 hover:text-emerald-300 border border-white/10 transition-colors"
-                    >
-                      {chip}
-                    </button>
-                  ))}
+                {/* Quick Topic Question Chips */}
+                <div className="space-y-1 pt-1">
+                  <span className="text-[10px] font-mono text-gray-400 block">Tap any question to ask immediately:</span>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-gray-400">
+                    {[
+                      'వరి అగ్గితెగులు నివారణ మందు ఏమిటి?',
+                      'పత్తిలో గులాబీ రంగు పురుగు మందు',
+                      'ఆకులు పసుపు రంగులోకి మారుతున్నాయి',
+                      'कपास में गुलाबी सुंडी का इलाज बताएं',
+                      'धान में ब्लास्ट रोग की दवा क्या है?',
+                      'टमाटर में पत्ती मुड़न रोग का उपाय',
+                      'Tomato leaf curl and thrips remedy',
+                      'Wheat rust fungicide spray dosage',
+                      'Cotton pink bollworm chemical spray',
+                      'What fertilizer to spray for yellow leaves?'
+                    ].map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => {
+                          if (!isCallActive) handleStartCall();
+                          handleProcessUserQuery(chip);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-emerald-500/25 text-gray-200 hover:text-emerald-300 border border-white/10 hover:border-emerald-500/40 transition-all text-left"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 

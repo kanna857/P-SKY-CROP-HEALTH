@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { playMultilingualSpeech, stopCurrentSpeech } from '@/lib/multilingualAudio';
 
 export interface VoiceLanguage {
   code: string;
@@ -149,47 +150,20 @@ export function useVoice({ language, onResult }: UseVoiceOptions) {
 
   const speak = useCallback(
     (text: string) => {
-      if (!('speechSynthesis' in window)) return;
-
-      // Clean markdown and special symbols for natural speech
-      const clean = text
-        .replace(/#{1,6}\s/g, '')
-        .replace(/\*\*/g, '')
-        .replace(/\*/g, '')
-        .replace(/`/g, '')
-        .replace(/•/g, '')
-        .replace(/- /g, '')
-        .replace(/\[.*?\]\(.*?\)/g, '')
-        .replace(/\n+/g, '. ');
-
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.lang = language || 'en-IN';
-      utterance.rate = 0.95;
-      utterance.pitch = 1.0;
-
-      const voices = window.speechSynthesis.getVoices();
-      const match = voices.find(
-        (v) =>
-          v.lang.toLowerCase() === (language || '').toLowerCase() ||
-          v.lang.startsWith((language || 'en').split('-')[0])
-      );
-      if (match) utterance.voice = match;
-
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-
-      window.speechSynthesis.speak(utterance);
+      stopCurrentSpeech();
+      playMultilingualSpeech({
+        text,
+        lang: language,
+        onStart: () => setIsSpeaking(true),
+        onEnd: () => setIsSpeaking(false),
+        onError: () => setIsSpeaking(false),
+      });
     },
     [language]
   );
 
   const stopSpeaking = useCallback(() => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
+    stopCurrentSpeech();
     setIsSpeaking(false);
   }, []);
 
@@ -201,9 +175,7 @@ export function useVoice({ language, onResult }: UseVoiceOptions) {
           recognitionRef.current.abort();
         } catch {}
       }
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopCurrentSpeech();
     };
   }, []);
 

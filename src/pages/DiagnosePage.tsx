@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { CameraUpload } from '@/components/analyze/CameraUpload';
-import { DiseaseRiskWidget } from '@/components/analyze/DiseaseRiskWidget';
 import { 
   Sparkles, 
   Leaf, 
@@ -312,9 +311,6 @@ const DiagnosePage = () => {
             </div>
           </div>
         </div>
-
-        {/* Bottom Full-Width Section: 72-Hour Micro-Climate Epidemiology Radar */}
-        <DiseaseRiskWidget />
       </div>
     </Layout>
   );
