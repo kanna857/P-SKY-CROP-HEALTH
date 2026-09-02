@@ -186,6 +186,24 @@ export function AppSidebar() {
           </div>
         </Link>
 
+        {/* Aerospace System Telemetry Status Pill */}
+        <div className="p-2.5 rounded-xl bg-black/60 border border-cyan-500/25 font-mono text-[10px] shadow-inner">
+          <div className="flex items-center justify-between text-cyan-300 font-bold mb-1">
+            <span className="flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              TELEMETRY HUD
+            </span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">ONLINE</span>
+          </div>
+          <div className="text-gray-400 text-[9px] flex items-center justify-between">
+            <span>S2B-MSI 10M</span>
+            <span className="text-cyan-400/70">38ms STAC</span>
+          </div>
+        </div>
+
         {/* Vertical Navigation */}
         <nav className="space-y-1.5">
           {navItems.map((item) => {

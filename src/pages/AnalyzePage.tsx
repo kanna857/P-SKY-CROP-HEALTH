@@ -14,7 +14,38 @@ import { DemoField, DEMO_FIELDS, generateNDVIData, TurfGeospatialMetrics, getNDV
 import { queueFieldOffline } from '@/lib/offlineQueue';
 import { useSavedFields } from '@/hooks/useSavedFields';
 import { Button } from '@/components/ui/button';
-import { Scan, Save, RotateCcw, Satellite, LogIn, Wheat } from 'lucide-react';
+import { 
+  Scan, 
+  Save, 
+  RotateCcw, 
+  Satellite, 
+  LogIn, 
+  Wheat, 
+  Radio, 
+  Activity, 
+  Compass, 
+  Crosshair, 
+  Sparkles, 
+  Layers, 
+  ShieldCheck, 
+  Cpu, 
+  Flame, 
+  Droplets, 
+  Zap, 
+  Maximize2, 
+  Eye, 
+  Download, 
+  BarChart3, 
+  Target, 
+  Gauge, 
+  Clock, 
+  SunMedium, 
+  Wind, 
+  ThermometerSun,
+  MapPin,
+  CheckCircle2,
+  AlertTriangle
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -35,6 +66,8 @@ const AnalyzePage = () => {
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [ndviData, setNdviData] = useState<ReturnType<typeof generateNDVIData> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeSpectralMode, setActiveSpectralMode] = useState<'NDVI' | 'NDRE' | 'EVI' | 'MSAVI' | 'NDWI' | 'THERMAL'>('NDVI');
+  const [isScanningLaser, setIsScanningLaser] = useState(false);
   const [realNdviData, setRealNdviData] = useState<{
     ndvi: number | null;
     source: string;
@@ -285,35 +318,124 @@ const AnalyzePage = () => {
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8">
-        {/* Header & Quick Farm Selector */}
-        <div className="mb-6 space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="container mx-auto px-3 sm:px-4 py-6 max-w-[1600px] space-y-6">
+        
+        {/* Aerospace Mission Control Header & Orbit Status Deck */}
+        <div className="hud-panel hud-bracket p-5 sm:p-6 space-y-5">
+          {/* Top Status Indicators Row */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <span className="font-mono text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5 animate-pulse" /> Sentinel-2B Constellation • Telemetry Active
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+              <span className="telemetry-chip">
+                <Satellite className="w-3 h-3 text-cyan-400" /> Orbit: 786.4 km Sun-Sync
+              </span>
+              <span className="telemetry-chip">
+                <Activity className="w-3 h-3 text-emerald-400" /> Res: 10m/px GSD • 12-Bit
+              </span>
+              <span className="telemetry-chip-emerald">
+                <ShieldCheck className="w-3 h-3 text-emerald-400" /> Copernicus STAC Hub: 38ms
+              </span>
+            </div>
+          </div>
+
+          {/* Title & Farm Context Header */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
-              <h1 className="font-display text-3xl md:text-4xl font-bold mb-1 flex items-center gap-3">
-                <Satellite className="w-8 h-8 text-primary" />
-                Field Analysis
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-bold bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 mb-2">
+                <Crosshair className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '10s' }} />
+                PRECISION MULTI-SPECTRAL OBSERVATORY
+              </div>
+              <h1 className="text-2xl sm:text-4xl font-extrabold font-display tracking-tight text-white flex items-center gap-3">
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-teal-300 via-cyan-400 to-indigo-300">
+                  Satellite Field Telemetry & Analytics
+                </span>
               </h1>
-              <p className="text-sm text-muted-foreground">
-                Select a location on the satellite map or choose a farm to analyze crop vigor and health
+              <p className="text-xs sm:text-sm text-gray-300 font-mono mt-1 flex items-center gap-2">
+                <span>Multi-index canopy vigor (NDVI/NDRE/EVI/NDWI), soil moisture & autonomous VRA zoning</span>
               </p>
             </div>
+
             {selectedField && (
-              <div className="flex items-center gap-2 bg-secondary/50 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-border/80 text-xs self-start md:self-auto">
-                <span className="text-muted-foreground">Active Farm:</span>
-                <span className="font-bold text-foreground">{selectedField.name.split(',')[0]}</span>
-                <span className="font-mono text-primary font-bold">({selectedField.crop})</span>
+              <div className="flex items-center gap-3 bg-black/70 p-3 rounded-xl border border-cyan-500/30 backdrop-blur-xl">
+                <div className="w-10 h-10 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 font-mono font-bold">
+                  <Target className="w-5 h-5 text-cyan-400" />
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase font-mono text-gray-400 tracking-wider">TARGET LOCK</div>
+                  <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                    {selectedField.name.split(',')[0]}
+                    <span className="text-emerald-400 font-mono text-xs">({selectedField.crop})</span>
+                  </div>
+                  <div className="text-[11px] font-mono text-cyan-300/80">
+                    {selectedField.lat.toFixed(4)}° N, {selectedField.lng.toFixed(4)}° E • {selectedField.area} ha
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Quick Demo Farm Selector Horizontal Bar */}
-          <div className="glass-card p-2.5 rounded-xl border border-border/80 bg-background/80 backdrop-blur-md shadow-md">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0 flex items-center gap-1.5 px-2">
-                <Wheat className="w-3.5 h-3.5 text-primary" />
-                Demo Farms:
+          {/* Interactive Sentinel-2 Multi-Spectral Reflectance Bands Strip */}
+          <div className="pt-2 border-t border-white/10">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-cyan-400" /> Sentinel-2 MSI Multi-Spectral Reflectance Bands:
               </span>
+              <span className="text-[10px] font-mono text-cyan-400/70 hidden sm:inline">
+                Tap band to inspect spectral utility
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+              {[
+                { band: 'B02', name: 'Blue (490nm)', desc: 'Atmospheric aerosols & water penetration', color: 'border-blue-500/40 bg-blue-500/10 text-blue-300' },
+                { band: 'B03', name: 'Green (560nm)', desc: 'Peak vegetation reflectance & plant vigor', color: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' },
+                { band: 'B04', name: 'Red (665nm)', desc: 'Chlorophyll absorption & boundary delineation', color: 'border-rose-500/40 bg-rose-500/10 text-rose-300' },
+                { band: 'B08', name: 'NIR (842nm)', desc: 'Mesophyll cellular structure & leaf density', color: 'border-purple-500/40 bg-purple-500/10 text-purple-300' },
+                { band: 'B8A', name: 'RedEdge (865nm)', desc: 'Chlorophyll content & early nitrogen stress', color: 'border-teal-500/40 bg-teal-500/10 text-teal-300' },
+                { band: 'B11', name: 'SWIR (1610nm)', desc: 'Foliar canopy water deficit & moisture content', color: 'border-amber-500/40 bg-amber-500/10 text-amber-300' },
+              ].map((b) => (
+                <button
+                  key={b.band}
+                  onClick={() => {
+                    toast({
+                      title: `${b.band} • ${b.name}`,
+                      description: b.desc,
+                    });
+                  }}
+                  className={`p-2 rounded-xl border text-left transition-all hover:scale-[1.02] active:scale-95 ${b.color}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-extrabold text-xs">{b.band}</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                  </div>
+                  <div className="text-[10px] font-semibold truncate mt-0.5">{b.name.split(' ')[0]}</div>
+                  <div className="text-[9px] opacity-75 font-mono truncate">{b.name.split(' ')[1]}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Precision Farm Selector Matrix */}
+          <div className="pt-2 border-t border-white/10">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                <Wheat className="w-3.5 h-3.5 text-emerald-400" /> Target Calibration Fields:
+              </span>
+              <span className="text-[10px] font-mono text-emerald-400/80">
+                {DEMO_FIELDS.length} Active Precision Farms Loaded
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
               {DEMO_FIELDS.map((f) => {
                 const isSelected = selectedField?.id === f.id;
                 const cat = getNDVICategory(f.ndvi);
@@ -323,18 +445,26 @@ const AnalyzePage = () => {
                     onClick={() => {
                       setSelectedField(f);
                       setAnalysisComplete(false);
+                      setIsScanningLaser(true);
+                      setTimeout(() => setIsScanningLaser(false), 2000);
                     }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium shrink-0 flex items-center gap-2 transition-all ${
+                    className={`p-2.5 rounded-xl text-xs shrink-0 flex items-center gap-3 transition-all text-left ${
                       isSelected
-                        ? 'bg-primary/20 text-primary border border-primary/50 shadow-sm'
-                        : 'bg-secondary/40 hover:bg-secondary text-muted-foreground border border-transparent'
+                        ? 'bg-cyan-950/70 text-white border-2 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.35)]'
+                        : 'bg-black/50 hover:bg-black/80 text-gray-300 border border-white/10 hover:border-white/20'
                     }`}
                   >
-                    <span className="font-semibold text-foreground">{f.name.split(' ')[0]}</span>
-                    <span className="text-[11px] opacity-75">{f.crop}</span>
-                    <span className={`font-mono font-bold text-[11px] ${cat.color}`}>
-                      {f.ndvi.toFixed(2)}
-                    </span>
+                    <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-bold text-sm">
+                      {f.crop === 'Wheat' ? '🌾' : f.crop === 'Corn' ? '🌽' : f.crop === 'Cotton' ? '🌱' : f.crop === 'Soybean' ? '🫘' : '🌿'}
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-xs">{f.name.split(' ')[0]} {f.name.split(' ')[1] || ''}</div>
+                      <div className="text-[10px] text-gray-400 font-mono">{f.crop} • {f.area} ha</div>
+                    </div>
+                    <div className="text-right pl-2 border-l border-white/10 font-mono">
+                      <div className={`font-extrabold text-xs ${cat.color}`}>{f.ndvi.toFixed(2)}</div>
+                      <div className="text-[9px] uppercase tracking-wider text-gray-400">{cat.label}</div>
+                    </div>
                   </button>
                 );
               })}
@@ -342,128 +472,260 @@ const AnalyzePage = () => {
           </div>
         </div>
 
+        {/* Two-Column Telemetry & Map Grid */}
         <div className="grid lg:grid-cols-12 gap-6">
+          
           {/* Main Map & Analysis Stage (8 Cols) */}
           <div className="lg:col-span-8 space-y-6">
-            {/* Map Canvas */}
-            <div className="h-[520px] md:h-[580px] w-full rounded-2xl overflow-hidden shadow-2xl border border-border">
-              <Suspense fallback={<ComponentLoader />}>
-                <FieldMap
-                  selectedField={selectedField}
-                  onFieldSelect={(field) => {
-                    setSelectedField(field);
-                    setAnalysisComplete(false);
-                  }}
-                  ndviTileUrl={realNdviData?.ndviTileUrl}
-                  trueColorUrl={realNdviData?.trueColorUrl}
-                  affectedArea={areaRange[0]}
-                  onPolygonDrawn={handlePolygonDrawn}
-                />
-              </Suspense>
-            </div>
+            
+            {/* High-Tech Map Framing Container */}
+            <div className="hud-panel hud-bracket p-3 sm:p-4 rounded-3xl space-y-3">
+              {/* Map HUD Top Command Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-black/70 p-2.5 rounded-2xl border border-cyan-500/25">
+                <div className="flex items-center gap-2 font-mono text-xs text-cyan-300">
+                  <Crosshair className="w-4 h-4 text-cyan-400 animate-spin" style={{ animationDuration: '12s' }} />
+                  <span className="font-bold">TARGET:</span>
+                  <span>{selectedField ? `${selectedField.lat.toFixed(4)}°N, ${selectedField.lng.toFixed(4)}°E` : 'DRAW POLYGON'}</span>
+                  <span className="text-gray-500">|</span>
+                  <span className="text-[11px] text-gray-400 hidden sm:inline">SCALE: 1:5,000 • 10M GSD</span>
+                </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={handleAnalyze}
-                disabled={!selectedField || isAnalyzing}
-                className="flex-1"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-2" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Scan className="w-4 h-4 mr-2" />
-                    Analyze Field
-                  </>
+                {/* Spectral Index Switcher Tabs */}
+                <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 overflow-x-auto">
+                  {(['NDVI', 'NDRE', 'EVI', 'MSAVI', 'NDWI', 'THERMAL'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => {
+                        setActiveSpectralMode(mode);
+                        setIsScanningLaser(true);
+                        setTimeout(() => setIsScanningLaser(false), 2000);
+                        toast({
+                          title: `Spectral Mode: ${mode}`,
+                          description: mode === 'NDVI' ? 'Normalized Difference Veg Index (Plant Vigor)' :
+                                       mode === 'NDRE' ? 'Red Edge Index (Chlorophyll Absorption)' :
+                                       mode === 'EVI' ? 'Enhanced Veg Index (Dense Canopy Structure)' :
+                                       mode === 'MSAVI' ? 'Modified Soil Adjusted Index (Soil Bias Reduced)' :
+                                       mode === 'NDWI' ? 'Normalized Water Index (Canopy Moisture Deficit)' :
+                                       'Thermal Foliar Evapotranspiration Stress Proxy',
+                        });
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition-all ${
+                        activeSpectralMode === mode
+                          ? 'bg-gradient-to-r from-cyan-500 to-emerald-400 text-black shadow-md shadow-cyan-500/30'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Map Canvas with Sci-Fi Corner Brackets and Floating Telemetry HUD */}
+              <div className="relative h-[520px] md:h-[600px] w-full rounded-2xl overflow-hidden border-2 border-cyan-500/30 shadow-2xl">
+                {/* Laser Scanning Line Animation */}
+                {(isScanningLaser || isAnalyzing) && (
+                  <div className="hud-laser-line" />
                 )}
-              </Button>
 
-              {isStacAnalyzing && (
-                <Button disabled variant="outline" className="flex-1 bg-primary/10">
-                  <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2" />
-                  Running Sentinel-2 Analysis...
-                </Button>
-              )}
+                {/* Map Component */}
+                <Suspense fallback={<ComponentLoader />}>
+                  <FieldMap
+                    selectedField={selectedField}
+                    onFieldSelect={(field) => {
+                      setSelectedField(field);
+                      setAnalysisComplete(false);
+                    }}
+                    ndviTileUrl={realNdviData?.ndviTileUrl}
+                    trueColorUrl={realNdviData?.trueColorUrl}
+                    affectedArea={areaRange[0]}
+                    onPolygonDrawn={handlePolygonDrawn}
+                  />
+                </Suspense>
 
-              {analysisComplete && selectedField && (
-                isAuthenticated ? (
-                  !isFieldSaved(selectedField.id) ? (
-                    <Button variant="outline" onClick={handleSaveField} disabled={isSaving}>
-                      {isSaving ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-4 h-4 mr-2" />
-                          Save Field
-                        </>
-                      )}
-                    </Button>
+                {/* Floating HUD Widget Top Left: Real-Time Canopy Vigor Gauge */}
+                {selectedField && (
+                  <div className="absolute top-3 left-3 z-[1000] bg-[#08101d]/90 backdrop-blur-xl p-3 rounded-2xl border border-cyan-500/40 shadow-2xl font-mono pointer-events-none hidden sm:block">
+                    <div className="text-[9px] uppercase tracking-wider text-cyan-300 font-bold mb-1 flex items-center gap-1.5">
+                      <Gauge className="w-3 h-3 text-cyan-400" /> CANOPY VIGOR GAUGE
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative w-12 h-12 flex items-center justify-center">
+                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            className="text-white/10"
+                            strokeWidth="3.5"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                          <path
+                            className="text-emerald-400 transition-all duration-700"
+                            strokeDasharray={`${Math.round(selectedField.ndvi * 100)}, 100`}
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                        </svg>
+                        <span className="absolute font-mono font-extrabold text-xs text-white">
+                          {selectedField.ndvi.toFixed(2)}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="text-xs font-extrabold text-emerald-400 uppercase">
+                          {getNDVICategory(selectedField.ndvi).label}
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                          {selectedField.area} ha • {activeSpectralMode}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Floating HUD Widget Top Right: Canopy Microclimate Telemetry */}
+                <div className="absolute top-3 right-3 z-[1000] bg-[#08101d]/90 backdrop-blur-xl px-3 py-2 rounded-2xl border border-cyan-500/40 shadow-2xl font-mono text-[11px] pointer-events-none hidden md:flex items-center gap-3 text-cyan-300">
+                  <div className="flex items-center gap-1">
+                    <ThermometerSun className="w-3.5 h-3.5 text-amber-400" />
+                    <span>28°C</span>
+                  </div>
+                  <span className="text-white/20">|</span>
+                  <div className="flex items-center gap-1">
+                    <Droplets className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>RH 58%</span>
+                  </div>
+                  <span className="text-white/20">|</span>
+                  <div className="flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>VPD 1.24 kPa</span>
+                  </div>
+                </div>
+
+                {/* Floating Bottom HUD Bar */}
+                <div className="absolute bottom-3 left-3 right-3 z-[1000] bg-black/80 backdrop-blur-xl px-4 py-2 rounded-xl border border-white/15 shadow-xl flex items-center justify-between text-xs font-mono text-gray-300 pointer-events-none">
+                  <span className="flex items-center gap-2">
+                    <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="hidden sm:inline">Autonomous Satellite Polygon Mode:</span>
+                    <span className="text-white font-semibold">Draw or tap farm polygon to extract 10m Sentinel-2 multi-spectral pixels</span>
+                  </span>
+                  <span className="text-emerald-400 font-bold hidden md:inline">
+                    SENTINEL-2B • LIVE
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons Command Bar */}
+              <div className="flex flex-wrap gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setIsScanningLaser(true);
+                    setTimeout(() => setIsScanningLaser(false), 3500);
+                    handleAnalyze();
+                  }}
+                  disabled={!selectedField || isAnalyzing}
+                  className="cyber-btn flex-1 flex items-center justify-center gap-2 text-sm font-extrabold h-12 cursor-pointer"
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                      EXTRACTING SATELLITE SPECTRUM...
+                    </>
                   ) : (
-                    <Button variant="outline" disabled className="text-success border-success/30">
-                      <Save className="w-4 h-4 mr-2" />
-                      Field Saved
-                    </Button>
-                  )
-                ) : (
-                  <Link to="/auth">
-                    <Button variant="outline">
-                      <LogIn className="w-4 h-4 mr-2" />
-                      Sign in to Save
-                    </Button>
-                  </Link>
-                )
-              )}
+                    <>
+                      <Scan className="w-5 h-5 text-black" />
+                      INITIATE DEEP SPECTRAL SCAN
+                    </>
+                  )}
+                </button>
 
-              {selectedField && (
-                <Button variant="ghost" onClick={handleReset}>
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Reset
-                </Button>
-              )}
+                {isStacAnalyzing && (
+                  <Button disabled variant="outline" className="flex-1 bg-cyan-500/10 border-cyan-500/40 text-cyan-300 font-mono h-12">
+                    <div className="w-4 h-4 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin mr-2" />
+                    RUNNING SENTINEL-2 AI SPECTRUM...
+                  </Button>
+                )}
+
+                {analysisComplete && selectedField && (
+                  isAuthenticated ? (
+                    !isFieldSaved(selectedField.id) ? (
+                      <Button variant="outline" onClick={handleSaveField} disabled={isSaving} className="h-12 border-emerald-500/40 hover:bg-emerald-500/10 text-emerald-300 font-mono font-bold">
+                        {isSaving ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin mr-2" />
+                            SAVING...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            SAVE FARM
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <Button variant="outline" disabled className="h-12 text-emerald-400 border-emerald-500/30 bg-emerald-500/10 font-mono font-bold">
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        FARM SAVED
+                      </Button>
+                    )
+                  ) : (
+                    <Link to="/auth">
+                      <Button variant="outline" className="h-12 border-white/20 hover:bg-white/10 font-mono">
+                        <LogIn className="w-4 h-4 mr-2" />
+                        SIGN IN TO SAVE
+                      </Button>
+                    </Link>
+                  )
+                )}
+
+                {selectedField && (
+                  <Button variant="ghost" onClick={handleReset} className="h-12 font-mono text-gray-400 hover:text-white">
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    RESET
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* STAC Fast Analysis Results */}
             {stacData && stacData.success && (
-              <div className="glass-card p-6 rounded-xl space-y-4 border-primary/50 border-2">
-                <div className="flex items-center justify-between">
+              <div className="hud-panel-emerald hud-bracket p-6 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-4">
                   <div>
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <Satellite className="w-5 h-5 text-primary" />
-                      High-Resolution Sentinel-2 Analysis
+                    <h3 className="text-xl font-bold flex items-center gap-2.5 font-display text-white">
+                      <Satellite className="w-6 h-6 text-emerald-400 animate-pulse" />
+                      Planetary Computer Sentinel-2 Telemetry
                     </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Powered by Microsoft Planetary Computer — Date: {stacData.acquisition_date} ({Math.round(stacData.cloud_cover_percent)}% Clouds)
+                    <p className="text-xs font-mono text-gray-300 mt-0.5">
+                      Acquisition: {stacData.acquisition_date} • Cloud Cover: {Math.round(stacData.cloud_cover_percent)}% • Surface Reflectance L2A
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="glass-card p-4 rounded-lg bg-green-500/10 border-green-500/30">
-                    <p className="text-sm text-muted-foreground font-medium mb-1">Mean NDVI</p>
-                    <p className="text-3xl font-bold text-green-500">{stacData.indices.mean_ndvi.toFixed(2)}</p>
+                  <div className="hud-panel p-4 rounded-xl bg-emerald-500/10 border-emerald-500/30 text-center">
+                    <p className="text-xs font-mono text-gray-300 uppercase tracking-wider mb-1">Mean NDVI</p>
+                    <p className="text-3xl font-extrabold font-mono text-emerald-400">{stacData.indices.mean_ndvi.toFixed(2)}</p>
+                    <span className="text-[10px] font-mono text-emerald-300/70">Foliar Vigor</span>
                   </div>
-                  <div className="glass-card p-4 rounded-lg bg-blue-500/10 border-blue-500/30">
-                    <p className="text-sm text-muted-foreground font-medium mb-1">Mean EVI</p>
-                    <p className="text-3xl font-bold text-blue-500">{stacData.indices.mean_evi.toFixed(2)}</p>
+                  <div className="hud-panel p-4 rounded-xl bg-cyan-500/10 border-cyan-500/30 text-center">
+                    <p className="text-xs font-mono text-gray-300 uppercase tracking-wider mb-1">Mean EVI</p>
+                    <p className="text-3xl font-extrabold font-mono text-cyan-400">{stacData.indices.mean_evi.toFixed(2)}</p>
+                    <span className="text-[10px] font-mono text-cyan-300/70">Canopy Density</span>
                   </div>
-                  <div className="glass-card p-4 rounded-lg bg-cyan-500/10 border-cyan-500/30">
-                    <p className="text-sm text-muted-foreground font-medium mb-1">Mean NDWI</p>
-                    <p className="text-3xl font-bold text-cyan-500">{stacData.indices.mean_ndwi?.toFixed(2) || 'N/A'}</p>
+                  <div className="hud-panel p-4 rounded-xl bg-blue-500/10 border-blue-500/30 text-center">
+                    <p className="text-xs font-mono text-gray-300 uppercase tracking-wider mb-1">Mean NDWI</p>
+                    <p className="text-3xl font-extrabold font-mono text-blue-400">{stacData.indices.mean_ndwi?.toFixed(2) || 'N/A'}</p>
+                    <span className="text-[10px] font-mono text-blue-300/70">Moisture Content</span>
                   </div>
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="space-y-2 relative group">
-                    <h4 className="text-sm font-medium">NDVI Map</h4>
+                    <h4 className="text-xs font-mono uppercase font-bold text-gray-300">NDVI Vigor Heatmap</h4>
                     <div
-                      className="relative cursor-crosshair overflow-hidden rounded-lg border border-border"
+                      className="relative cursor-crosshair overflow-hidden rounded-xl border border-emerald-500/30 shadow-lg"
                       onClick={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const x = e.clientX - rect.left;
@@ -477,15 +739,18 @@ const AnalyzePage = () => {
                       }}
                     >
                       <img src={stacData.visuals.ndvi_map} alt="NDVI" className="w-full transition-transform hover:scale-105 duration-300" />
-                      <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
-                        <span className="bg-background/80 backdrop-blur text-xs font-semibold px-2 py-1 rounded drop-shadow-md">Click to inspect pixel</span>
+                      <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                        <span className="bg-black/80 border border-emerald-400/50 backdrop-blur text-xs font-mono text-emerald-300 px-2.5 py-1 rounded drop-shadow-md">
+                          Inspect Pixel Radiance
+                        </span>
                       </div>
                     </div>
                   </div>
+
                   <div className="space-y-2 relative group">
-                    <h4 className="text-sm font-medium">EVI Map</h4>
+                    <h4 className="text-xs font-mono uppercase font-bold text-gray-300">EVI Dense Canopy Map</h4>
                     <div
-                      className="relative cursor-crosshair overflow-hidden rounded-lg border border-border"
+                      className="relative cursor-crosshair overflow-hidden rounded-xl border border-cyan-500/30 shadow-lg"
                       onClick={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const x = e.clientX - rect.left;
@@ -499,28 +764,33 @@ const AnalyzePage = () => {
                       }}
                     >
                       <img src={stacData.visuals.evi_map} alt="EVI" className="w-full transition-transform hover:scale-105 duration-300" />
-                      <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
-                        <span className="bg-background/80 backdrop-blur text-xs font-semibold px-2 py-1 rounded drop-shadow-md">Click to inspect pixel</span>
+                      <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                        <span className="bg-black/80 border border-cyan-400/50 backdrop-blur text-xs font-mono text-cyan-300 px-2.5 py-1 rounded drop-shadow-md">
+                          Inspect Pixel Radiance
+                        </span>
                       </div>
                     </div>
                   </div>
+
                   <div className="space-y-2 relative group">
-                    <h4 className="text-sm font-medium">NDWI (Water Stress) Map</h4>
-                    <div className="relative overflow-hidden rounded-lg border border-border">
+                    <h4 className="text-xs font-mono uppercase font-bold text-gray-300">NDWI Foliar Water Stress</h4>
+                    <div className="relative overflow-hidden rounded-xl border border-blue-500/30 shadow-lg">
                       <img src={stacData.visuals.ndwi_map} alt="NDWI" className="w-full transition-transform hover:scale-105 duration-300" />
                     </div>
                   </div>
                 </div>
 
                 {stacData.vra_geojson && Object.keys(stacData.vra_geojson).length > 0 && (
-                  <div className="mt-8 space-y-4">
-                    <h3 className="text-lg font-semibold flex items-center gap-2 border-t border-border pt-6">
-                      Variable Rate Application (VRA)
-                    </h3>
-                    <div className="glass-card p-6 rounded-xl flex items-center justify-between">
+                  <div className="mt-8 space-y-4 pt-6 border-t border-emerald-500/20">
+                    <div className="hud-panel p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-emerald-500/30">
                       <div>
-                        <h4 className="font-medium text-lg">VRA Prescription Zones</h4>
-                        <p className="text-sm text-muted-foreground mt-1">Generated GeoJSON with Low, Medium, and High vigor zones for smart machinery integration.</p>
+                        <div className="flex items-center gap-2">
+                          <Zap className="w-5 h-5 text-amber-400" />
+                          <h4 className="font-extrabold text-lg text-white font-display">Autonomous Variable Rate Application (VRA)</h4>
+                        </div>
+                        <p className="text-xs font-mono text-gray-300 mt-1">
+                          Generated geo-referenced prescription zones for tractor autopilot & DJI Agras drone precision sprayers.
+                        </p>
                       </div>
                       <Button
                         onClick={() => {
@@ -532,29 +802,35 @@ const AnalyzePage = () => {
                           downloadAnchorNode.click();
                           downloadAnchorNode.remove();
                         }}
+                        className="cyber-btn shrink-0"
                       >
-                        Download GeoJSON
+                        <Download className="w-4 h-4 mr-2" />
+                        DOWNLOAD VRA GEOJSON
                       </Button>
                     </div>
                   </div>
                 )}
 
                 {stacData.historical && stacData.historical.length > 0 && (
-                  <div className="mt-8 space-y-4">
-                    <h3 className="text-lg font-semibold flex items-center gap-2 border-t border-border pt-6">
-                      Historical Time-Lapse
+                  <div className="mt-8 space-y-4 pt-6 border-t border-emerald-500/20">
+                    <h3 className="text-lg font-bold flex items-center gap-2 font-display text-white">
+                      <Clock className="w-5 h-5 text-cyan-400" />
+                      Multi-Temporal Historical Orbit Time-Lapse
                     </h3>
-                    <div className="glass-card p-6 rounded-xl space-y-4">
-                      <div className="flex items-center justify-between mb-2">
+                    <div className="hud-panel p-6 rounded-2xl space-y-4">
+                      <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-medium text-lg">Date: {stacData.historical[historyIndex].date}</p>
-                          <p className="text-sm text-muted-foreground">Mean NDVI: {stacData.historical[historyIndex].mean_ndvi.toFixed(2)} • Cloud Cover: {stacData.historical[historyIndex].cloud_cover}%</p>
+                          <p className="font-mono font-bold text-sm text-cyan-300">Observation Date: {stacData.historical[historyIndex].date}</p>
+                          <p className="text-xs font-mono text-gray-400">Mean NDVI: {stacData.historical[historyIndex].mean_ndvi.toFixed(2)} • Cloud Cover: {stacData.historical[historyIndex].cloud_cover}%</p>
                         </div>
+                        <span className="telemetry-chip">
+                          Pass {historyIndex + 1} of {stacData.historical.length}
+                        </span>
                       </div>
                       <img
                         src={stacData.historical[historyIndex].ndvi_map}
                         alt="Historical NDVI"
-                        className="w-full max-w-sm mx-auto rounded-lg border border-border shadow-md"
+                        className="w-full max-w-md mx-auto rounded-xl border-2 border-cyan-500/30 shadow-xl"
                       />
                       <div className="pt-4">
                         <input
@@ -563,9 +839,9 @@ const AnalyzePage = () => {
                           max={Math.max(0, stacData.historical.length - 1)}
                           value={historyIndex}
                           onChange={(e) => setHistoryIndex(parseInt(e.target.value))}
-                          className="w-full accent-primary"
+                          className="w-full accent-cyan-400 cursor-pointer"
                         />
-                        <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                        <div className="flex justify-between text-xs font-mono text-gray-400 mt-2">
                           <span>{stacData.historical[0].date}</span>
                           <span>{stacData.historical[stacData.historical.length - 1].date}</span>
                         </div>
@@ -580,9 +856,10 @@ const AnalyzePage = () => {
             {analysisComplete && selectedField && ndviData && (
               <>
                 {realNdviData && (
-                  <div className={`glass-card p-3 rounded-lg flex items-center gap-2 text-sm ${realNdviData.source === 'agromonitoring' ? 'bg-success/10 border border-success/20' : 'bg-muted/50'
-                    }`}>
-                    <Satellite className={`w-4 h-4 ${realNdviData.source === 'agromonitoring' ? 'text-success' : 'text-muted-foreground'}`} />
+                  <div className={`hud-panel p-3 rounded-xl flex items-center gap-2 text-xs font-mono ${
+                    realNdviData.source === 'agromonitoring' ? 'border-emerald-500/40 text-emerald-300' : 'text-gray-400'
+                  }`}>
+                    <Satellite className={`w-4 h-4 ${realNdviData.source === 'agromonitoring' ? 'text-emerald-400' : 'text-gray-400'}`} />
                     <span>
                       {realNdviData.source === 'agromonitoring'
                         ? `Real satellite data • ${new Date(realNdviData.imageDate!).toLocaleDateString()} • ${realNdviData.cloudCoverage?.toFixed(0)}% cloud cover`
@@ -600,25 +877,36 @@ const AnalyzePage = () => {
 
           {/* Right Sidebar - Analytics & Tools (4 Cols) */}
           <div className="lg:col-span-4 space-y-6">
-            <SavedFieldsSidebar
-              onSelectField={(field) => {
-                setSelectedField(field);
-                setAnalysisComplete(false);
-              }}
-              selectedFieldId={selectedField?.id}
-              savedFields={savedFields}
-              removeField={removeField}
-            />
+            <div className="hud-panel hud-bracket p-1 rounded-2xl overflow-hidden">
+              <SavedFieldsSidebar
+                onSelectField={(field) => {
+                  setSelectedField(field);
+                  setAnalysisComplete(false);
+                }}
+                selectedFieldId={selectedField?.id}
+                savedFields={savedFields}
+                removeField={removeField}
+              />
+            </div>
 
             {selectedField && (
-              <NDVIOverlay field={selectedField} />
+              <div className="hud-panel hud-bracket p-1 rounded-2xl overflow-hidden">
+                <NDVIOverlay field={selectedField} />
+              </div>
             )}
 
-            <AreaRangeSelector value={areaRange} onChange={setAreaRange} />
+            <div className="hud-panel p-4 rounded-2xl border border-white/10">
+              <div className="flex items-center gap-2 mb-3 text-xs font-mono font-bold text-cyan-300">
+                <Maximize2 className="w-3.5 h-3.5 text-cyan-400" /> PRECISION ACREAGE BUFFER
+              </div>
+              <AreaRangeSelector value={areaRange} onChange={setAreaRange} />
+            </div>
 
-            <Suspense fallback={<ComponentLoader />}>
-              <AlertsConfig selectedField={selectedField} currentNdvi={ndviData?.average} />
-            </Suspense>
+            <div className="hud-panel hud-bracket p-1 rounded-2xl overflow-hidden">
+              <Suspense fallback={<ComponentLoader />}>
+                <AlertsConfig selectedField={selectedField} currentNdvi={ndviData?.average} />
+              </Suspense>
+            </div>
           </div>
         </div>
       </div>
